@@ -1,11 +1,11 @@
 <template>
   <div class="overlay" @click.self="$emit('close')">
     <div class="form-box">
-      <h3>发布卡片</h3>
+      <h3>写一张卡片</h3>
       <textarea
         v-model="content"
         maxlength="200"
-        placeholder="写下你的想法..."
+        placeholder="勇敢说出你的心声..."
         rows="4"
       ></textarea>
       <div class="form-meta">
@@ -13,7 +13,7 @@
       </div>
       <div class="form-actions">
         <button class="btn-cancel" @click="$emit('close')">取消</button>
-        <button class="btn-submit" :disabled="!content.trim()" @click="submit">发布</button>
+        <button class="btn-submit" :disabled="!content.trim()" @click="submit">写好了，发出去</button>
       </div>
     </div>
   </div>

@@ -49,7 +49,7 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
      * @return 创建好的评论对象（包含发布者昵称）
      * @throws RuntimeException 当 userId 对应的用户不存在时抛出异常
      */
-    public Comment addComment(Long cardId, String content, Long userId) {
+    public Comment addComment(Long cardId, String content, Long userId, Long parentId) {
         // 查询用户是否存在，防止传入伪造的 userId
         User user = userMapper.selectById(userId);
         if (user == null) {
@@ -61,6 +61,19 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
         comment.setCardId(cardId);
         comment.setUserId(user.getId());
         comment.setContent(content);
+
+        // 若指定了父评论，校验其存在且属于同一张卡片
+        if (parentId != null) {
+            Comment parent = getById(parentId);
+            if (parent == null || !parent.getCardId().equals(cardId)) {
+                throw new RuntimeException("被回复的评论不存在");
+            }
+            comment.setParentId(parentId);
+            // 冗余存储被回复者昵称，避免前端额外查询
+            User replyToUser = userMapper.selectById(parent.getUserId());
+            comment.setReplyToNickname(replyToUser != null ? replyToUser.getNickname() : "匿名用户");
+        }
+
         save(comment);
 
         // 设置昵称用于返回给前端显示

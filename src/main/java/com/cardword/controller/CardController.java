@@ -96,4 +96,28 @@ public class CardController {
             return Collections.singletonMap("error", "无权删除该卡片或卡片不存在");
         }
     }
+
+    /**
+     * 追/取消追卡片（toggle）
+     */
+    @PostMapping("/{id}/follow")
+    public Map<String, Object> follow(@PathVariable Long id, @RequestBody Map<String, Object> body) {
+        Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
+        if (userId == null) {
+            return Collections.singletonMap("error", "请先登录");
+        }
+        boolean followed = cardService.toggleFollow(userId, id);
+        return Collections.singletonMap("followed", followed);
+    }
+
+    /**
+     * 获取用户追的卡片列表
+     */
+    @GetMapping("/followed")
+    public IPage<Card> followedCards(
+            @RequestParam Long userId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        return cardService.listFollowedCards(userId, page, size);
+    }
 }

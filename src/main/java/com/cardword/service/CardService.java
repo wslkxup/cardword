@@ -5,14 +5,18 @@ import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.cardword.entity.Card;
+import com.cardword.entity.CardFollow;
 import com.cardword.entity.Comment;
 import com.cardword.entity.User;
+import com.cardword.mapper.CardFollowMapper;
 import com.cardword.mapper.CardMapper;
 import com.cardword.mapper.CommentMapper;
 import com.cardword.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,6 +30,9 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
 
     @Autowired
     private CommentMapper commentMapper;
+
+    @Autowired
+    private CardFollowMapper cardFollowMapper;
 
     /**
      * 分页查询所有卡片列表
@@ -197,6 +204,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      * @param userId 当前操作者的用户ID，用于权限校验
      * @return true 删除成功，false 卡片不存在或无权限
      */
+    @Transactional
     public boolean deleteCard(Long cardId, Long userId) {
         // 查询卡片是否存在
         Card card = getById(cardId);
@@ -212,8 +220,99 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         // 先删除该卡片下的所有评论，避免产生孤儿数据
         commentMapper.delete(new QueryWrapper<Comment>().eq("card_id", cardId));
 
+        // 删除该卡片的所有追记录
+        cardFollowMapper.delete(new QueryWrapper<CardFollow>().eq("card_id", cardId));
+
         // 再删除卡片本身
         removeById(cardId);
         return true;
+    }
+
+    /**
+     * 追/取消追卡片（toggle）
+     * 已追则取消，未追则新增
+     *
+     * @return true 表示追上了，false 表示取消追了
+     */
+    public boolean toggleFollow(Long userId, Long cardId) {
+        CardFollow existing = cardFollowMapper.selectOne(
+                new QueryWrapper<CardFollow>()
+                        .eq("user_id", userId)
+                        .eq("card_id", cardId)
+        );
+        if (existing != null) {
+            cardFollowMapper.deleteById(existing.getId());
+            return false;
+        } else {
+            CardFollow follow = new CardFollow();
+            follow.setUserId(userId);
+            follow.setCardId(cardId);
+            cardFollowMapper.insert(follow);
+            return true;
+        }
+    }
+
+    /**
+     * 查询用户是否追了某些卡片（批量）
+     *
+     * @return 该用户已追的卡片ID集合
+     */
+    public Set<Long> getFollowedCardIds(Long userId, Set<Long> cardIds) {
+        if (userId == null || cardIds.isEmpty()) return Collections.emptySet();
+        List<CardFollow> follows = cardFollowMapper.selectList(
+                new QueryWrapper<CardFollow>()
+                        .eq("user_id", userId)
+                        .in("card_id", cardIds)
+        );
+        return follows.stream().map(CardFollow::getCardId).collect(Collectors.toSet());
+    }
+
+    /**
+     * 分页查询用户追的卡片列表
+     */
+    public IPage<Card> listFollowedCards(Long userId, int page, int size) {
+        // 先查追的 card_id 列表
+        List<CardFollow> follows = cardFollowMapper.selectList(
+                new QueryWrapper<CardFollow>()
+                        .eq("user_id", userId)
+                        .orderByDesc("created_at")
+        );
+        if (follows.isEmpty()) {
+            Page<Card> empty = new Page<>(page, size);
+            empty.setRecords(Collections.emptyList());
+            empty.setTotal(0);
+            return empty;
+        }
+
+        List<Long> cardIds = follows.stream()
+                .map(CardFollow::getCardId)
+                .collect(Collectors.toList());
+
+        // 手动分页
+        int total = cardIds.size();
+        int fromIndex = (page - 1) * size;
+        if (fromIndex >= total) {
+            Page<Card> empty = new Page<>(page, size);
+            empty.setRecords(Collections.emptyList());
+            empty.setTotal(total);
+            return empty;
+        }
+        int toIndex = Math.min(fromIndex + size, total);
+        List<Long> pageIds = cardIds.subList(fromIndex, toIndex);
+
+        List<Card> cards = listByIds(pageIds);
+        // 保持按追的时间排序
+        Map<Long, Integer> orderMap = new java.util.HashMap<>();
+        for (int i = 0; i < pageIds.size(); i++) {
+            orderMap.put(pageIds.get(i), i);
+        }
+        cards.sort((a, b) -> orderMap.getOrDefault(a.getId(), 0) - orderMap.getOrDefault(b.getId(), 0));
+
+        fillCardExtraInfo(cards);
+
+        Page<Card> result = new Page<>(page, size);
+        result.setRecords(cards);
+        result.setTotal(total);
+        return result;
     }
 }

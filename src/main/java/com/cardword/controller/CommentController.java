@@ -50,6 +50,7 @@ public class CommentController {
             return Collections.singletonMap("error", "请先登录后再评论");
         }
         String content = (String) body.get("content");
-        return commentService.addComment(cardId, content, userId);
+        Long parentId = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
+        return commentService.addComment(cardId, content, userId, parentId);
     }
 }

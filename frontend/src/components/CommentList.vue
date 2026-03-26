@@ -1,6 +1,7 @@
 <template>
   <div class="comment-section">
-    <div class="comment-list">
+    <div class="comment-list" ref="commentListRef">
+      <TransitionGroup name="comment-pop">
       <div v-for="c in comments" :key="c.id" class="comment-item">
         <div class="comment-avatar">{{ (c.nickname || '?')[0] }}</div>
         <div class="comment-bubble">
@@ -8,21 +9,32 @@
             <span class="comment-author">{{ c.nickname }}</span>
             <span class="comment-time">{{ formatTime(c.createdAt) }}</span>
           </div>
+          <p v-if="c.replyToNickname" class="comment-reply-tag">回复 @{{ c.replyToNickname }}</p>
           <p class="comment-text">{{ c.content }}</p>
+          <button v-if="props.userId" class="btn-reply" @click="setReply(c)">回复</button>
         </div>
       </div>
+      </TransitionGroup>
       <p v-if="comments.length === 0" class="no-comment">暂无评论，来抢沙发</p>
     </div>
     <div v-if="props.userId" class="comment-input">
-      <input v-model="content" placeholder="写评论..." class="input-content" @keyup.enter="submit" />
-      <button class="btn-send" :disabled="!content.trim()" @click="submit">发送</button>
+      <div v-if="replyTo" class="reply-hint">
+        <span>回复 @{{ replyTo.nickname }}</span>
+        <button class="btn-cancel-reply" @click="cancelReply">取消</button>
+      </div>
+      <div class="input-row">
+        <input v-model="content" :placeholder="replyTo ? `回复 @${replyTo.nickname}...` : '写评论...'" class="input-content" @keyup.enter="submit" />
+        <button class="btn-send" :class="{ 'btn-sent': sent }" :disabled="!content.trim() || sending" @click="submit">
+          {{ sent ? '✓' : sending ? '...' : '发送' }}
+        </button>
+      </div>
     </div>
     <p v-else class="no-comment">请先登录后再评论</p>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { getComments, addComment } from '../api.js'
 
 const props = defineProps({ cardId: Number, userId: Number })
@@ -30,6 +42,18 @@ const emit = defineEmits(['commented'])
 
 const comments = ref([])
 const content = ref('')
+const sending = ref(false)
+const sent = ref(false)
+const commentListRef = ref(null)
+const replyTo = ref(null)
+
+function setReply(comment) {
+  replyTo.value = { id: comment.id, nickname: comment.nickname }
+}
+
+function cancelReply() {
+  replyTo.value = null
+}
 
 async function loadComments() {
   const res = await getComments(props.cardId)
@@ -37,11 +61,23 @@ async function loadComments() {
 }
 
 async function submit() {
-  if (!content.value.trim()) return
-  const res = await addComment(props.cardId, content.value.trim(), '')
-  comments.value.push(res)
-  content.value = ''
-  emit('commented')
+  if (!content.value.trim() || sending.value) return
+  sending.value = true
+  try {
+    const parentId = replyTo.value ? replyTo.value.id : null
+    const res = await addComment(props.cardId, content.value.trim(), '', parentId)
+    comments.value.push(res)
+    content.value = ''
+    replyTo.value = null
+    emit('commented')
+    sent.value = true
+    setTimeout(() => { sent.value = false }, 1200)
+    await nextTick()
+    const list = commentListRef.value
+    if (list) list.scrollTop = list.scrollHeight
+  } finally {
+    sending.value = false
+  }
 }
 
 function formatTime(dt) {
@@ -133,6 +169,26 @@ onMounted(loadComments)
   word-break: break-word;
 }
 
+.comment-reply-tag {
+  font-size: 12px;
+  color: var(--color-accent);
+  margin-bottom: 2px;
+}
+
+.btn-reply {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 0 0;
+  transition: color 0.2s;
+}
+
+.btn-reply:hover {
+  color: var(--color-accent);
+}
+
 .no-comment {
   color: var(--color-text-muted);
   font-size: 13px;
@@ -141,10 +197,39 @@ onMounted(loadComments)
 
 .comment-input {
   display: flex;
+  flex-direction: column;
   gap: 8px;
   margin-top: 12px;
   padding-top: 12px;
   border-top: 1px solid var(--color-border);
+}
+
+.input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.reply-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--color-accent);
+  background: var(--color-accent-light);
+  padding: 4px 10px;
+  border-radius: 8px;
+}
+
+.btn-cancel-reply {
+  background: none;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.btn-cancel-reply:hover {
+  color: var(--color-text);
 }
 
 .input-content {
@@ -183,5 +268,29 @@ onMounted(loadComments)
 .btn-send:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.btn-sent {
+  background: #06d6a0 !important;
+  transform: scale(1.05);
+}
+
+/* TransitionGroup animations for new comments */
+.comment-pop-enter-from {
+  opacity: 0;
+  transform: translateY(16px) scale(0.95);
+}
+
+.comment-pop-enter-active {
+  transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.comment-pop-enter-to {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.comment-pop-move {
+  transition: transform 0.3s ease;
 }
 </style>

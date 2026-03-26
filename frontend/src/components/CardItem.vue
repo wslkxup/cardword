@@ -11,7 +11,10 @@
     <div class="card-accent" :style="{ background: accentGradient }"></div>
 
     <div class="card-header">
-      <span class="card-author">{{ card.user?.nickname || '匿名用户' }}</span>
+      <div class="card-author-wrap">
+        <div class="card-avatar">{{ (card.user?.nickname || '匿')[0] }}</div>
+        <span class="card-author">{{ card.user?.nickname || '匿名用户' }}</span>
+      </div>
       <button v-if="isOwner" class="btn-delete" @click="showConfirm = true">删除</button>
     </div>
 
@@ -20,12 +23,16 @@
     <div class="card-footer">
       <span class="card-time">{{ formatTime(card.createdAt) }}</span>
       <div class="card-actions">
-        <button class="btn-like" :class="{ liked }" @click="handleLike">
-          <span class="like-icon" :class="{ 'like-burst': justLiked }">{{ liked ? '❤' : '♡' }}</span>
+        <button class="btn-like" @click="handleLike">
+          <span class="like-icon" :class="{ 'like-burst': justLiked }">❤</span>
           <span class="like-count" :class="{ 'count-pop': countAnimating }">{{ card.likesCount }}</span>
         </button>
         <button class="btn-comment" @click="toggleComments">
           💬 {{ card.commentCount || 0 }}
+        </button>
+        <button class="btn-follow" :class="{ followed }" @click="handleFollow">
+          <span class="follow-icon" :class="{ 'follow-burst': justFollowed }">{{ followed ? '★' : '☆' }}</span>
+          <span class="follow-pop" v-if="justFollowed">追！</span>
         </button>
       </div>
     </div>
@@ -99,22 +106,24 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, inject } from 'vue'
-import { likeCard, deleteCard } from '../api.js'
+import { ref, computed, watch, inject, nextTick, onUnmounted } from 'vue'
+import { likeCard, deleteCard, followCard } from '../api.js'
 import CommentList from './CommentList.vue'
 
 const props = defineProps({
   card: Object,
   userId: Number,
-  index: { type: Number, default: 0 }
+  index: { type: Number, default: 0 },
+  initialFollowed: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['liked', 'deleted'])
+const emit = defineEmits(['liked', 'deleted', 'followed'])
 const showToast = inject('showToast')
 
-const liked = ref(false)
 const justLiked = ref(false)
 const countAnimating = ref(false)
+const followed = ref(props.initialFollowed)
+const justFollowed = ref(false)
 const showComments = ref(false)
 const showConfirm = ref(false)
 const showDetail = ref(false)
@@ -176,15 +185,50 @@ watch(() => props.userId, (val) => {
   if (!val) showComments.value = false
 })
 
+// 点击卡片外部时自动收起评论区
+function onClickOutside(e) {
+  if (cardRef.value && !cardRef.value.contains(e.target)) {
+    showComments.value = false
+  }
+}
+
+watch(showComments, (val) => {
+  if (val) {
+    nextTick(() => document.addEventListener('click', onClickOutside))
+  } else {
+    document.removeEventListener('click', onClickOutside)
+  }
+})
+
+onUnmounted(() => {
+  document.removeEventListener('click', onClickOutside)
+})
+
 async function handleLike() {
-  if (liked.value) return
+  if (justLiked.value) return
   const res = await likeCard(props.card.id)
-  liked.value = true
   justLiked.value = true
   countAnimating.value = true
   setTimeout(() => { justLiked.value = false }, 600)
   setTimeout(() => { countAnimating.value = false }, 400)
   emit('liked', props.card.id, res.data.likesCount)
+}
+
+async function handleFollow() {
+  if (!props.userId) {
+    showToast('请先登录', 'warning')
+    return
+  }
+  const res = await followCard(props.card.id, props.userId)
+  followed.value = res.followed
+  if (followed.value) {
+    justFollowed.value = true
+    setTimeout(() => { justFollowed.value = false }, 800)
+    showToast('已追！将持续关注该卡片', 'success')
+  } else {
+    showToast('已取消追', 'info')
+  }
+  emit('followed', props.card.id, followed.value)
 }
 
 async function handleDelete() {
@@ -284,11 +328,38 @@ function formatFullTime(dt) {
   margin-bottom: 14px;
 }
 
+.card-author-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.card-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
 .card-author {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 700;
   color: var(--color-accent);
-  letter-spacing: 0.3px;
+  letter-spacing: 0.5px;
+}
+
+.detail-nickname {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: 0.5px;
 }
 
 .btn-delete {
@@ -330,7 +401,7 @@ function formatFullTime(dt) {
   gap: 8px;
 }
 
-.btn-like, .btn-comment {
+.btn-like, .btn-comment, .btn-follow {
   background: none;
   border: none;
   cursor: pointer;
@@ -339,22 +410,74 @@ function formatFullTime(dt) {
   padding: 5px 10px;
   border-radius: 20px;
   transition: all 0.2s ease;
+  position: relative;
 }
 
-.btn-like:hover, .btn-comment:hover {
+.btn-like:hover, .btn-comment:hover, .btn-follow:hover {
   background: var(--color-accent-light);
   color: var(--color-accent);
 }
 
-.btn-like.liked {
+.btn-like {
   color: var(--color-like);
+}
+
+.btn-like:hover {
   background: var(--color-danger-light);
+  color: var(--color-like);
+}
+
+.btn-follow.followed {
+  color: #ffc107;
+  background: transparent;
+}
+
+/* ========== 追按钮动画 ========== */
+.follow-icon {
+  display: inline-block;
+  font-size: 16px;
+  -webkit-text-stroke: 0.5px currentColor;
+}
+
+.btn-follow.followed .follow-icon {
+  -webkit-text-stroke: 0;
+}
+
+.follow-burst {
+  animation: starBurst 0.5s ease;
+}
+
+@keyframes starBurst {
+  0% { transform: scale(1); }
+  25% { transform: scale(1.6) rotate(15deg); }
+  50% { transform: scale(0.9) rotate(-5deg); }
+  75% { transform: scale(1.2); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+.follow-pop {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #ffc107;
+  font-size: 14px;
+  font-weight: bold;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: followPopUp 0.8s ease forwards;
+}
+
+@keyframes followPopUp {
+  0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-28px) scale(1.3); }
 }
 
 /* ========== 点赞动画 ========== */
 .like-icon {
   display: inline-block;
   position: relative;
+  font-size: 16px;
 }
 
 .like-burst {

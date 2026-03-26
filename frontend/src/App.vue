@@ -8,19 +8,25 @@
     </div>
 
     <header class="header">
-      <h1>CardWord</h1>
+      <h1>Card Word</h1>
       <p class="subtitle">
         <span class="typing-text">{{ currentPhrase }}</span>
         <span class="typing-cursor">|</span>
       </p>
     </header>
 
+    <!-- 右上角公告铃铛 -->
+    <button class="bell-btn" @click="openAnnouncements" title="公告通知">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+      <span v-if="hasNewAnnouncement" class="bell-dot"></span>
+    </button>
+
     <!-- 右侧浮动圆形按钮栏 -->
     <nav class="side-nav">
       <button
         :class="['nav-btn', { active: activeTab === 'all' }]"
         @click="switchTab('all')"
-        title="全部卡片"
+        title="卡片世界"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
       </button>
@@ -30,12 +36,18 @@
         @click="shuffle"
         title="换一批"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+        <svg :class="['windmill-icon', { spinning: shuffling }]" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M12 12 C12 12, 8 2, 12 2 C16 2, 12 12, 12 12Z" opacity="0.9"/>
+          <path d="M12 12 C12 12, 22 8, 22 12 C22 16, 12 12, 12 12Z" opacity="0.7"/>
+          <path d="M12 12 C12 12, 16 22, 12 22 C8 22, 12 12, 12 12Z" opacity="0.9"/>
+          <path d="M12 12 C12 12, 2 16, 2 12 C2 8, 12 12, 12 12Z" opacity="0.7"/>
+          <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        </svg>
       </button>
       <button
         :class="['nav-btn', { active: activeTab === 'my' }]"
         @click="switchTab('my')"
-        title="我的卡片"
+        title="我的"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       </button>
@@ -44,7 +56,7 @@
         v-if="userId"
         class="nav-btn nav-btn-primary"
         @click="showForm = true"
-        title="发布卡片"
+        title="写一张卡片"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
       </button>
@@ -52,7 +64,7 @@
         v-if="!userId"
         class="nav-btn nav-btn-primary"
         @click="showLogin = true"
-        title="登录"
+        title="进入小站"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
       </button>
@@ -60,7 +72,7 @@
         v-if="!userId"
         class="nav-btn"
         @click="showRegister = true"
-        title="注册"
+        title="加入小站"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
       </button>
@@ -75,13 +87,28 @@
       <div class="nav-divider"></div>
       <button
         class="nav-btn"
-        @click="toggleDark"
-        :title="darkMode ? '浅色模式' : '深色模式'"
+        @click="showFeedback = true"
+        title="问题反馈"
       >
-        <svg v-if="darkMode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="12" y1="8" x2="12" y2="12"/><circle cx="12" cy="15" r="0.5" fill="currentColor"/></svg>
       </button>
     </nav>
+
+    <!-- 个人中心头部 -->
+    <div v-if="activeTab === 'my' && userId" class="my-profile">
+      <div class="profile-header">
+        <div class="profile-avatar">{{ (userNickname || '?')[0] }}</div>
+        <span class="profile-nickname">{{ userNickname || '用户' }}</span>
+        <button class="theme-toggle-btn" @click="toggleDark" :title="darkMode ? '切换浅色模式' : '切换深色模式'">
+          <svg v-if="darkMode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+          <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        </button>
+      </div>
+      <div class="my-sub-tabs">
+        <button :class="['sub-tab', { active: mySubTab === 'cards' }]" @click="switchMySubTab('cards')">我的卡片</button>
+        <button :class="['sub-tab', { active: mySubTab === 'followed' }]" @click="switchMySubTab('followed')">我追的</button>
+      </div>
+    </div>
 
     <main class="card-grid">
       <template v-if="loading">
@@ -100,8 +127,10 @@
           :card="card"
           :user-id="userId"
           :index="index"
+          :initial-followed="followedSet.has(card.id)"
           @liked="onLiked"
           @deleted="onDeleted"
+          @followed="onFollowed"
         />
       </template>
 
@@ -118,6 +147,7 @@
         </svg>
         <p v-if="activeTab === 'all'">还没有卡片，来发布第一张吧</p>
         <p v-else-if="!userId">请先登录查看你的卡片</p>
+        <p v-else-if="mySubTab === 'followed'">还没有追任何卡片，去首页逛逛吧</p>
         <p v-else>你还没有发布过卡片</p>
       </div>
     </main>
@@ -141,7 +171,8 @@
     <Transition name="modal">
       <div v-if="showLogin" class="modal" @click.self="showLogin = false">
         <div class="modal-content">
-          <h3>登录</h3>
+          <h3>欢迎回来</h3>
+          <p class="modal-desc">看看大家最近都在说些什么吧</p>
           <div class="form-group">
             <label>用户名</label>
             <input type="text" v-model="loginForm.nickname" placeholder="请输入用户名" />
@@ -152,7 +183,7 @@
           </div>
           <div class="modal-buttons">
             <button class="btn-cancel" @click="showLogin = false">取消</button>
-            <button class="btn-submit" @click="handleLogin">登录</button>
+            <button class="btn-submit" @click="handleLogin">进入小站</button>
           </div>
         </div>
       </div>
@@ -160,11 +191,14 @@
 
     <Transition name="modal">
       <div v-if="showRegister" class="modal" @click.self="showRegister = false">
-        <div class="modal-content">
-          <h3>注册</h3>
+        <div class="modal-content register-modal">
+          <h3>加入小站</h3>
+          <p class="modal-desc">用一个账号，开始记录你的故事</p>
           <div class="form-group">
             <label>用户名</label>
-            <input type="text" v-model="registerForm.nickname" placeholder="请输入用户名" />
+            <input type="text" v-model="registerForm.nickname" placeholder="请输入用户名" @input="registerError = ''" />
+            <span v-if="registerError" class="form-error">{{ registerError }}</span>
+            <span v-else class="form-hint">支持中英文，建议使用昵称，让分享更轻松自在</span>
           </div>
           <div class="form-group">
             <label>密码</label>
@@ -172,7 +206,50 @@
           </div>
           <div class="modal-buttons">
             <button class="btn-cancel" @click="showRegister = false">取消</button>
-            <button class="btn-submit" @click="handleRegister">注册</button>
+            <button class="btn-submit" @click="handleRegister">加入小站</button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="modal">
+      <div v-if="showFeedback" class="modal" @click.self="showFeedback = false">
+        <div class="modal-content" style="max-width: 480px;">
+          <h3>问题反馈</h3>
+          <div class="form-group">
+            <label>问题标题</label>
+            <input type="text" v-model="feedbackForm.title" placeholder="请简要描述问题" maxlength="100" />
+            <span class="char-hint">{{ feedbackForm.title.length }}/100</span>
+          </div>
+          <div class="form-group">
+            <label>问题描述</label>
+            <textarea v-model="feedbackForm.content" placeholder="请详细描述你遇到的问题..." maxlength="500" rows="5" class="feedback-textarea"></textarea>
+            <span class="char-hint">{{ feedbackForm.content.length }}/500</span>
+          </div>
+          <div class="modal-buttons">
+            <button class="btn-cancel" @click="showFeedback = false">取消</button>
+            <button class="btn-submit" :disabled="!feedbackForm.title.trim() || !feedbackForm.content.trim() || feedbackSubmitting" @click="handleFeedback">
+              {{ feedbackSubmitting ? '提交中...' : '提交' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
+    <Transition name="modal">
+      <div v-if="showAnnouncements" class="modal" @click.self="showAnnouncements = false">
+        <div class="modal-content announcement-modal">
+          <h3>公告</h3>
+          <div v-if="announcements.length === 0" class="announcement-empty">暂无公告</div>
+          <div v-else class="announcement-list">
+            <div v-for="a in announcements" :key="a.id" class="announcement-item">
+              <div class="announcement-title">{{ a.title }}</div>
+              <div class="announcement-content">{{ a.content }}</div>
+              <div class="announcement-time">{{ formatTime(a.createdAt) }}</div>
+            </div>
+          </div>
+          <div class="modal-buttons">
+            <button class="btn-cancel" @click="showAnnouncements = false">关闭</button>
           </div>
         </div>
       </div>
@@ -189,7 +266,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
-import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, login, register } from './api.js'
+import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, login, register, submitFeedback, followCard, getFollowedCards, getAnnouncements, getLatestAnnouncement } from './api.js'
 import CardItem from './components/CardItem.vue'
 import CardForm from './components/CardForm.vue'
 
@@ -201,11 +278,21 @@ const activeTab = ref('all')
 const page = ref(1)
 const hasMore = ref(true)
 const userId = ref(getLocalUserId())
+const userNickname = ref(localStorage.getItem('cardword_nickname') || '')
 const loading = ref(true)
+const shuffling = ref(false)
 const darkMode = ref(localStorage.getItem('cardword_dark') === '1')
+const mySubTab = ref('cards')
+const followedSet = ref(new Set())
 
 const loginForm = ref({ nickname: '', pwd: '' })
 const registerForm = ref({ nickname: '', pwd: '' })
+const showFeedback = ref(false)
+const feedbackForm = ref({ title: '', content: '' })
+const feedbackSubmitting = ref(false)
+const showAnnouncements = ref(false)
+const announcements = ref([])
+const hasNewAnnouncement = ref(false)
 
 // ========== Toast 通知系统 ==========
 const toasts = ref([])
@@ -221,7 +308,7 @@ function showToast(message, type = 'info') {
 provide('showToast', showToast)
 
 // ========== 打字机效果 ==========
-const phrases = ['分享你的想法', '记录每一刻灵感', '用文字连接世界', '让想法自由飞翔']
+const phrases = ['说出你的心声，让世界倾听', '想法无界限，言语无限可能', '用文字表达真实的自己', '分享你的生活趣事，激发共鸣', '让每个人的故事都有舞台']
 const currentPhrase = ref('')
 let phraseIdx = 0
 let charIdx = 0
@@ -323,18 +410,38 @@ async function loadMyCards() {
 function switchTab(tab) {
   activeTab.value = tab
   if (tab === 'all') loadCards()
-  else loadMyCards()
+  else {
+    mySubTab.value = 'cards'
+    loadMyCards()
+  }
+}
+
+function switchMySubTab(sub) {
+  mySubTab.value = sub
+  if (sub === 'cards') {
+    loadMyCards()
+  } else {
+    loadFollowedCards()
+  }
 }
 
 function shuffle() {
+  shuffling.value = true
   loadCards()
+  setTimeout(() => { shuffling.value = false }, 1000)
 }
 
 async function loadMore() {
   page.value++
-  const res = await getMyCards(userId.value, page.value, 10)
-  cards.value = [...cards.value, ...res.data.records]
-  hasMore.value = page.value < res.data.pages
+  if (mySubTab.value === 'followed') {
+    const res = await getFollowedCards(userId.value, page.value, 10)
+    cards.value = [...cards.value, ...res.data.records]
+    hasMore.value = page.value < res.data.pages
+  } else {
+    const res = await getMyCards(userId.value, page.value, 10)
+    cards.value = [...cards.value, ...res.data.records]
+    hasMore.value = page.value < res.data.pages
+  }
 }
 
 async function onPublished(card) {
@@ -357,6 +464,8 @@ async function handleLogin() {
   if (res.userId) {
     userId.value = res.userId
     setLocalUserId(res.userId)
+    userNickname.value = loginForm.value.nickname
+    localStorage.setItem('cardword_nickname', loginForm.value.nickname)
     showLogin.value = false
     showToast(`${loginForm.value.nickname}，欢迎回来！`, 'success')
     if (activeTab.value === 'my') loadMyCards()
@@ -365,21 +474,76 @@ async function handleLogin() {
   }
 }
 
+const registerError = ref('')
 async function handleRegister() {
+  registerError.value = ''
   const res = await register(registerForm.value.nickname, registerForm.value.pwd)
   if (res.userId) {
     userId.value = res.userId
     setLocalUserId(res.userId)
+    userNickname.value = registerForm.value.nickname
+    localStorage.setItem('cardword_nickname', registerForm.value.nickname)
     showRegister.value = false
     showToast('注册成功！', 'success')
+  } else if (res.error === '用户名已存在') {
+    registerError.value = '用户名已存在，请换一个试试'
   } else {
-    showToast('注册失败', 'error')
+    showToast(res.error || '注册失败', 'error')
   }
+}
+
+async function handleFeedback() {
+  if (feedbackSubmitting.value) return
+  feedbackSubmitting.value = true
+  try {
+    const res = await submitFeedback(feedbackForm.value.title.trim(), feedbackForm.value.content.trim())
+    if (res.success) {
+      showFeedback.value = false
+      feedbackForm.value = { title: '', content: '' }
+      showToast('提交成功，工程师尽快处理中', 'success')
+    } else {
+      showToast(res.error || '提交失败', 'error')
+    }
+  } catch {
+    showToast('网络异常，请稍后重试', 'error')
+  } finally {
+    feedbackSubmitting.value = false
+  }
+}
+
+// ========== 公告功能 ==========
+async function checkNewAnnouncement() {
+  try {
+    const lastRead = localStorage.getItem('cardword_announcement_read')
+    const res = await getLatestAnnouncement(lastRead || undefined)
+    hasNewAnnouncement.value = res.hasNew
+  } catch {}
+}
+
+async function openAnnouncements() {
+  showAnnouncements.value = true
+  try {
+    const data = await getAnnouncements()
+    announcements.value = data
+    if (data.length > 0) {
+      localStorage.setItem('cardword_announcement_read', data[0].createdAt)
+    }
+    hasNewAnnouncement.value = false
+  } catch {}
+}
+
+function formatTime(timeStr) {
+  if (!timeStr) return ''
+  const d = new Date(timeStr)
+  const pad = n => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
 function logout() {
   userId.value = null
+  userNickname.value = ''
   localStorage.removeItem('cardword_user_id')
+  localStorage.removeItem('cardword_nickname')
   showToast('已退出登录', 'info')
   if (activeTab.value === 'my') loadMyCards()
 }
@@ -394,9 +558,39 @@ function onDeleted(cardId) {
   showToast('卡片已删除', 'info')
 }
 
+function onFollowed(cardId, isFollowed) {
+  if (isFollowed) {
+    followedSet.value.add(cardId)
+  } else {
+    followedSet.value.delete(cardId)
+    // 如果在"我追的"标签页取消追，从列表移除
+    if (activeTab.value === 'my' && mySubTab.value === 'followed') {
+      cards.value = cards.value.filter(c => c.id !== cardId)
+    }
+  }
+}
+
+async function loadFollowedCards() {
+  if (!userId.value) {
+    cards.value = []
+    hasMore.value = false
+    loading.value = false
+    return
+  }
+  loading.value = true
+  page.value = 1
+  const res = await getFollowedCards(userId.value, page.value, 10)
+  cards.value = res.data.records
+  hasMore.value = page.value < res.data.pages
+  // 标记所有为已追
+  followedSet.value = new Set(res.data.records.map(c => c.id))
+  loading.value = false
+}
+
 onMounted(() => {
   loadCards()
   typeStep()
+  checkNewAnnouncement()
 })
 
 onUnmounted(() => {
@@ -466,7 +660,7 @@ onUnmounted(() => {
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: 'LXGW WenKai Screen', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   background: var(--color-bg);
   color: var(--color-text);
   transition: background 0.4s ease, color 0.4s ease;
@@ -532,6 +726,8 @@ body {
 .nav-btn svg { width: 20px; height: 20px; }
 .nav-btn:hover { transform: scale(1.12); box-shadow: 0 4px 12px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); color: var(--color-accent); }
 .nav-btn.active { background: var(--color-accent); color: #fff; box-shadow: 0 4px 12px rgba(67,97,238,0.3), 0 8px 24px rgba(67,97,238,0.15); }
+.windmill-icon.spinning { animation: windmill-spin 1s linear; }
+@keyframes windmill-spin { from { transform: rotate(0deg); } to { transform: rotate(720deg); } }
 .nav-btn-primary { background: var(--color-accent); color: #fff; }
 .nav-btn-primary:hover { background: var(--color-accent-hover); color: #fff; box-shadow: 0 4px 12px rgba(67,97,238,0.3), 0 8px 24px rgba(67,97,238,0.15); }
 .nav-btn-danger { color: #ccc; }
@@ -615,11 +811,18 @@ body {
 /* ========== 毛玻璃弹窗 ========== */
 .modal { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--color-modal-backdrop); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); display: flex; align-items: center; justify-content: center; z-index: 1000; }
 .modal-content { background: var(--color-modal-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px); border: 1px solid var(--color-border); padding: 28px; border-radius: 16px; width: 90%; max-width: 400px; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
-.modal-content h3 { margin-bottom: 20px; color: var(--color-text); font-size: 18px; }
-.form-group { margin-bottom: 16px; }
+.modal-content h3 { margin-bottom: 6px; color: var(--color-text); font-size: 18px; }
+.modal-desc { margin-bottom: 20px; color: var(--color-text-secondary); font-size: 13px; }
+.form-group { margin-bottom: 16px; position: relative; padding-bottom: 2px; }
 .form-group label { display: block; margin-bottom: 8px; color: var(--color-text-secondary); font-size: 14px; }
 .form-group input { width: 100%; padding: 10px 12px; border: 1px solid var(--color-input-border); border-radius: 10px; font-size: 14px; transition: border-color 0.2s, box-shadow 0.2s; background: var(--color-bg-card); color: var(--color-text); }
 .form-group input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(67,97,238,0.1); }
+.form-hint { display: block; margin-top: 6px; font-size: 12px; color: var(--color-text-muted); }
+.form-error { display: block; margin-top: 6px; font-size: 12px; color: #e74c3c; }
+.register-modal { min-width: 360px; }
+.char-hint { position: absolute; right: 0; bottom: -18px; font-size: 12px; color: var(--color-text-muted); }
+.feedback-textarea { width: 100%; border: 1px solid var(--color-input-border); border-radius: 10px; padding: 10px 12px; font-size: 14px; font-family: inherit; resize: none; background: var(--color-bg-card); color: var(--color-text); transition: border-color 0.2s, box-shadow 0.2s; }
+.feedback-textarea:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(67,97,238,0.1); }
 .modal-buttons { display: flex; gap: 10px; justify-content: flex-end; margin-top: 24px; }
 .btn-cancel, .btn-submit { padding: 9px 18px; border-radius: 10px; font-size: 14px; cursor: pointer; transition: all 0.2s; }
 .btn-cancel { background: transparent; color: var(--color-text-secondary); border: 1px solid var(--color-input-border); }
@@ -880,6 +1083,222 @@ body {
   margin-bottom: 12px;
 }
 
+/* ========== 个人中心 ========== */
+.my-profile {
+  position: relative;
+  z-index: 1;
+  margin-bottom: 24px;
+  background: linear-gradient(145deg, var(--color-bg-card) 0%, var(--color-bg-card-end) 100%);
+  border-radius: 20px;
+  padding: 28px;
+  border: 1px solid var(--color-border);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.profile-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.profile-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.profile-nickname {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.theme-toggle-btn {
+  margin-left: auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-card-bg);
+  color: var(--color-text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+}
+
+.theme-toggle-btn svg {
+  width: 20px;
+  height: 20px;
+}
+
+.theme-toggle-btn:hover {
+  background: var(--color-accent);
+  color: #fff;
+  border-color: var(--color-accent);
+}
+
+.my-sub-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 2px solid var(--color-border);
+}
+
+.sub-tab {
+  background: none;
+  border: none;
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  position: relative;
+  transition: color 0.2s;
+}
+
+.sub-tab:hover {
+  color: var(--color-text);
+}
+
+.sub-tab.active {
+  color: var(--color-accent);
+}
+
+.sub-tab.active::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 60%;
+  height: 2px;
+  background: var(--color-accent);
+  border-radius: 1px;
+}
+
+/* ========== 右上角公告铃铛 ========== */
+.bell-btn {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  z-index: 200;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.bell-btn svg {
+  width: 24px;
+  height: 24px;
+  transition: transform 0.3s ease;
+}
+
+.bell-btn:hover {
+  transform: scale(1.15);
+  color: var(--color-accent);
+}
+
+.bell-btn:hover svg {
+  animation: bellSwing 0.6s ease-in-out;
+}
+
+@keyframes bellSwing {
+  0% { transform: rotate(0deg); }
+  20% { transform: rotate(15deg); }
+  40% { transform: rotate(-12deg); }
+  60% { transform: rotate(8deg); }
+  80% { transform: rotate(-5deg); }
+  100% { transform: rotate(0deg); }
+}
+
+.bell-dot {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 10px;
+  height: 10px;
+  background: #ff4757;
+  border-radius: 50%;
+  box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.5);
+  animation: bellPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes bellPulse {
+  0% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0.5); }
+  70% { box-shadow: 0 0 0 8px rgba(255, 71, 87, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 71, 87, 0); }
+}
+
+/* ========== 公告弹窗 ========== */
+.announcement-modal {
+  max-width: 520px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.announcement-list {
+  overflow-y: auto;
+  flex: 1;
+  max-height: 50vh;
+}
+
+.announcement-item {
+  padding: 16px 0;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.announcement-item:last-child {
+  border-bottom: none;
+}
+
+.announcement-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.announcement-content {
+  font-size: 14px;
+  color: var(--color-text-secondary);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.announcement-time {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+}
+
+.announcement-empty {
+  text-align: center;
+  padding: 40px 0;
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+
 /* ========== 响应式 ========== */
 @media (max-width: 768px) {
   .app { padding-right: 16px; padding-bottom: 80px; }
@@ -889,7 +1308,9 @@ body {
   .nav-btn:hover, .nav-btn.active { box-shadow: none; }
   .nav-divider { width: 1px; height: 24px; margin: 0 2px; }
   .nav-btn::after { display: none; }
-  .toast-container { right: 10px; left: 10px; }
+  .toast-container { right: 10px; left: 10px; top: 72px; }
   .toast { min-width: auto; }
+  .bell-btn { top: 14px; right: 16px; width: 40px; height: 40px; }
+  .bell-btn svg { width: 20px; height: 20px; }
 }
 </style>

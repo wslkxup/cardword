@@ -94,6 +94,21 @@ export function deleteCard(cardId, userId) {
     .then(res => res.data)
 }
 
+/**
+ * 追/取消追卡片（toggle）
+ */
+export function followCard(cardId, userId) {
+  return api.post(`/cards/${cardId}/follow`, { userId })
+    .then(res => res.data)
+}
+
+/**
+ * 获取用户追的卡片列表
+ */
+export function getFollowedCards(userId, page = 1, size = 10) {
+  return api.get('/cards/followed', { params: { userId, page, size } })
+}
+
 // ==================== 评论相关接口 ====================
 
 /**
@@ -116,9 +131,9 @@ export function getComments(cardId) {
  * @param {string} nickname - 昵称（目前未使用，后端通过 userId 获取）
  * @returns {Promise<object>} 创建好的评论对象
  */
-export function addComment(cardId, content, nickname) {
+export function addComment(cardId, content, nickname, parentId) {
   const userId = getLocalUserId()
-  return api.post(`/cards/${cardId}/comments`, { content, nickname, userId })
+  return api.post(`/cards/${cardId}/comments`, { content, nickname, userId, parentId })
     .then(res => res.data)
 }
 
@@ -145,5 +160,38 @@ export function login(nickname, pwd) {
  */
 export function register(nickname, pwd) {
   return api.post('/users/register', { nickname, pwd })
+    .then(res => res.data)
+}
+
+// ==================== 公告相关接口 ====================
+
+/**
+ * 获取公告列表（按时间倒序）
+ */
+export function getAnnouncements() {
+  return api.get('/announcements').then(res => res.data)
+}
+
+/**
+ * 查询是否有新公告
+ *
+ * @param {string} since - ISO 时间字符串，查询该时间之后是否有新公告
+ */
+export function getLatestAnnouncement(since) {
+  const params = since ? { since } : {}
+  return api.get('/announcements/latest', { params }).then(res => res.data)
+}
+
+// ==================== 问题反馈接口 ====================
+
+/**
+ * 提交问题反馈
+ *
+ * @param {string} title   - 问题标题
+ * @param {string} content - 问题描述
+ * @returns {Promise<object>} 成功返回 {success: true}，失败返回 {error: "..."}
+ */
+export function submitFeedback(title, content) {
+  return api.post('/feedback', { title, content })
     .then(res => res.data)
 }
