@@ -20,6 +20,11 @@
 
     <div class="card-content">{{ card.content }}</div>
 
+    <!-- 卡片图片 -->
+    <div v-if="card.imageUrl" class="card-image" @click.stop>
+      <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
+    </div>
+
     <div class="card-footer">
       <span class="card-time">{{ formatTime(card.createdAt) }}</span>
       <div class="card-actions">
@@ -67,6 +72,11 @@
 
             <!-- 卡片内容 -->
             <div class="detail-content">{{ card.content }}</div>
+
+            <!-- 详情图片 -->
+            <div v-if="card.imageUrl" class="detail-image" @click.stop>
+              <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
+            </div>
 
             <div class="detail-divider"></div>
 
@@ -271,6 +281,74 @@ function formatFullTime(dt) {
   const pad = n => String(n).padStart(2, '0')
   return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
+
+// ========== 图片预览 ==========
+function previewImage(url) {
+  // 创建全屏图片预览
+  const overlay = document.createElement('div')
+  overlay.className = 'image-preview-overlay'
+  overlay.innerHTML = `
+    <div class="image-preview-inner" @click.self="closePreview()">
+      <img src="${url}" />
+      <button class="image-preview-close" @click="closePreview()">×</button>
+    </div>
+  `
+  overlay.style.cssText = `
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.9);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    cursor: zoom-out;
+  `
+  
+  const inner = overlay.querySelector('.image-preview-inner')
+  inner.style.cssText = `
+    position: relative;
+    max-width: 90%;
+    max-height: 90%;
+  `
+  
+  const img = overlay.querySelector('img')
+  img.style.cssText = `
+    max-width: 100%;
+    max-height: 90vh;
+    object-fit: contain;
+    cursor: zoom-out;
+  `
+  
+  const closeBtn = overlay.querySelector('.image-preview-close')
+  closeBtn.style.cssText = `
+    position: absolute;
+    top: -40px;
+    right: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  `
+  
+  function closePreview() {
+    overlay.remove()
+  }
+  
+  closeBtn.onclick = closePreview
+  overlay.onclick = closePreview
+  
+  document.body.appendChild(overlay)
+}
 </script>
 
 <style scoped>
@@ -384,6 +462,39 @@ function formatFullTime(dt) {
   margin-bottom: 16px;
   word-break: break-word;
   color: var(--color-text-content);
+}
+
+.card-image {
+  margin-bottom: 16px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.card-image img {
+  width: 100%;
+  max-height: 400px;
+  object-fit: cover;
+  display: block;
+  transition: transform 0.3s ease;
+}
+
+.card-image:hover img {
+  transform: scale(1.02);
+}
+
+.detail-image {
+  margin: 16px 0;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: zoom-in;
+}
+
+.detail-image img {
+  width: 100%;
+  max-height: 500px;
+  object-fit: cover;
+  display: block;
 }
 
 .card-footer {

@@ -15,6 +15,7 @@ public class Card {
     private Long id;
     private Long userId;
     private String content;
+    private String imageUrl;
     private Integer likesCount;
     private LocalDateTime createdAt;
 

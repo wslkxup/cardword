@@ -26,6 +26,7 @@ CREATE TABLE `card` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `user_id` bigint DEFAULT NULL,
   `content` varchar(200) NOT NULL,
+  `image_url` varchar(500) DEFAULT NULL COMMENT '图片 URL',
   `likes_count` int DEFAULT '0',
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)

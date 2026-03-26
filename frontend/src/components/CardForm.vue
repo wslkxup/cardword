@@ -8,12 +8,34 @@
         placeholder="勇敢说出你的心声..."
         rows="4"
       ></textarea>
+      
+      <!-- 图片预览 -->
+      <div v-if="imageUrl" class="image-preview">
+        <img :src="imageUrl" alt="预览图片" />
+        <button class="remove-image-btn" @click="removeImage" title="删除图片">×</button>
+      </div>
+      
       <div class="form-meta">
         <span class="char-count">{{ content.length }}/200</span>
       </div>
+      
+      <!-- 图片上传按钮 -->
+      <div class="image-actions">
+        <label class="btn-upload" v-if="!imageUrl">
+          <input 
+            type="file" 
+            accept="image/*" 
+            @change="onFileChange" 
+            hidden 
+          />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          <span>添加图片</span>
+        </label>
+      </div>
+      
       <div class="form-actions">
         <button class="btn-cancel" @click="$emit('close')">取消</button>
-        <button class="btn-submit" :disabled="!content.trim()" @click="submit">写好了，发出去</button>
+        <button class="btn-submit" :disabled="!content.trim() && !imageUrl" @click="submit">写好了，发出去</button>
       </div>
     </div>
   </div>
@@ -21,16 +43,57 @@
 
 <script setup>
 import { ref } from 'vue'
-import { publishCard, getLocalUserId } from '../api.js'
+import { publishCard, getLocalUserId, uploadImage } from '../api.js'
 
 const emit = defineEmits(['close', 'published'])
 
 const content = ref('')
+const imageUrl = ref(null)
+const uploading = ref(false)
+
+async function onFileChange(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  
+  // 验证文件大小（5MB）
+  if (file.size > 5 * 1024 * 1024) {
+    alert('图片大小不能超过 5MB')
+    e.target.value = ''
+    return
+  }
+  
+  // 验证文件类型
+  if (!file.type.startsWith('image/')) {
+    alert('只能上传图片文件')
+    e.target.value = ''
+    return
+  }
+  
+  uploading.value = true
+  try {
+    const res = await uploadImage(file)
+    if (res.error) {
+      alert(res.error)
+    } else {
+      imageUrl.value = res.url
+    }
+  } catch (err) {
+    alert('上传失败：' + err.message)
+  } finally {
+    uploading.value = false
+    e.target.value = '' // 清空 input，允许重复选择同一文件
+  }
+}
+
+function removeImage() {
+  imageUrl.value = null
+}
 
 async function submit() {
-  if (!content.value.trim()) return
+  if (!content.value.trim() && !imageUrl.value) return
+  
   const userId = getLocalUserId()
-  const res = await publishCard(content.value.trim(), '', userId)
+  const res = await publishCard(content.value.trim(), '', userId, imageUrl.value)
   emit('published', res.data)
 }
 </script>
@@ -137,5 +200,72 @@ textarea:focus {
 .btn-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.image-preview {
+  position: relative;
+  margin-top: 12px;
+  border-radius: 10px;
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.image-preview img {
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+  display: block;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.remove-image-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.1);
+}
+
+.image-actions {
+  margin-top: 12px;
+}
+
+.btn-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  background: var(--color-accent-light);
+  border: 1px dashed var(--color-accent);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-accent);
+  transition: all 0.2s;
+}
+
+.btn-upload svg {
+  width: 18px;
+  height: 18px;
+}
+
+.btn-upload:hover {
+  background: var(--color-accent);
+  color: #fff;
 }
 </style>

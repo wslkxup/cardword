@@ -122,10 +122,11 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      *
      * @param content  卡片文本内容
      * @param nickname 昵称（未登录时会被忽略，统一使用匿名用户）
-     * @param userId   发布者的用户ID，为 null 表示未登录
+     * @param userId   发布者的用户 ID，为 null 表示未登录
+     * @param imageUrl 图片 URL（可选）
      * @return 创建好的卡片对象（包含用户信息和初始评论数 0）
      */
-    public Card publish(String content, String nickname, Long userId) {
+    public Card publish(String content, String nickname, Long userId, String imageUrl) {
         User user = null;
         if (userId != null) {
             user = userMapper.selectById(userId);
@@ -144,6 +145,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         Card card = new Card();
         card.setUserId(user.getId());
         card.setContent(content);
+        card.setImageUrl(imageUrl);
         card.setLikesCount(0);
         save(card);
 

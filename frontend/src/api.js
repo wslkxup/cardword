@@ -66,10 +66,27 @@ export function getMyCards(userId, page = 1, size = 10) {
  *
  * @param {string} content  - 卡片文本内容
  * @param {string} nickname - 发布者昵称（未登录时后端会使用匿名用户）
- * @param {number} userId   - 当前登录用户ID
+ * @param {number} userId   - 当前登录用户 ID
+ * @param {string} imageUrl - 图片 URL（可选）
  */
-export function publishCard(content, nickname, userId) {
-  return api.post('/cards', { content, nickname, userId })
+export function publishCard(content, nickname, userId, imageUrl = null) {
+  return api.post('/cards', { content, nickname, userId, imageUrl })
+}
+
+/**
+ * 上传图片
+ *
+ * @param {File} file - 要上传的图片文件
+ * @returns {Promise<object>} 成功返回 {url: string}，失败返回 {error: "..."}
+ */
+export function uploadImage(file) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return api.post('/cards/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  }).then(res => res.data)
 }
 
 /**

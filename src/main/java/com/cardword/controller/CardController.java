@@ -3,8 +3,10 @@ package com.cardword.controller;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.cardword.entity.Card;
 import com.cardword.service.CardService;
+import com.cardword.service.FileUploadService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Collections;
 import java.util.List;
@@ -21,6 +23,9 @@ public class CardController {
 
     @Autowired
     private CardService cardService;
+
+    @Autowired
+    private FileUploadService fileUploadService;
 
     /**
      * 分页获取全部卡片列表（按时间倒序）
@@ -52,7 +57,8 @@ public class CardController {
         String content = (String) body.get("content");
         String nickname = (String) body.getOrDefault("nickname", "匿名用户");
         Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
-        return cardService.publish(content, nickname, userId);
+        String imageUrl = (String) body.get("imageUrl");
+        return cardService.publish(content, nickname, userId, imageUrl);
     }
 
     /**
@@ -83,8 +89,8 @@ public class CardController {
      * 前端需要在请求参数中携带 userId 表明当前登录用户，
      * 后端会校验该 userId 是否是卡片的发布者，防止越权删除
      *
-     * @param id     要删除的卡片ID（路径参数）
-     * @param userId 当前登录用户ID（查询参数）
+     * @param id     要删除的卡片 ID（路径参数）
+     * @param userId 当前登录用户 ID（查询参数）
      * @return 删除结果：成功返回 {"success": true}，失败返回 {"error": "..."}
      */
     @DeleteMapping("/{id}")
@@ -94,6 +100,19 @@ public class CardController {
             return Collections.singletonMap("success", true);
         } else {
             return Collections.singletonMap("error", "无权删除该卡片或卡片不存在");
+        }
+    }
+
+    /**
+     * 上传图片接口
+     */
+    @PostMapping("/upload")
+    public Map<String, Object> uploadImage(@RequestParam("file") MultipartFile file) {
+        try {
+            String url = fileUploadService.uploadImage(file);
+            return Collections.singletonMap("url", url);
+        } catch (Exception e) {
+            return Collections.singletonMap("error", e.getMessage());
         }
     }
 

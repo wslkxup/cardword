@@ -25,18 +25,11 @@
     <nav class="side-nav">
       <button
         :class="['nav-btn', { active: activeTab === 'all' }]"
-        @click="switchTab('all')"
-        title="卡片世界"
+        @click="activeTab === 'all' ? shuffle() : switchTab('all')"
+        :title="activeTab === 'all' ? '换一批' : '卡片世界'"
       >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-      </button>
-      <button
-        v-if="activeTab === 'all'"
-        class="nav-btn"
-        @click="shuffle"
-        title="换一批"
-      >
-        <svg :class="['windmill-icon', { spinning: shuffling }]" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+        <svg v-if="activeTab !== 'all'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        <svg v-else :class="['windmill-icon', { spinning: shuffling }]" viewBox="0 0 24 24" fill="currentColor" stroke="none">
           <path d="M12 12 C12 12, 8 2, 12 2 C16 2, 12 12, 12 12Z" opacity="0.9"/>
           <path d="M12 12 C12 12, 22 8, 22 12 C22 16, 12 12, 12 12Z" opacity="0.7"/>
           <path d="M12 12 C12 12, 16 22, 12 22 C8 22, 12 12, 12 12Z" opacity="0.9"/>
