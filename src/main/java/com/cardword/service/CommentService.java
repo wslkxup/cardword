@@ -1,8 +1,10 @@
 package com.cardword.service;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.cardword.entity.Card;
 import com.cardword.entity.Comment;
 import com.cardword.entity.User;
+import com.cardword.mapper.CardMapper;
 import com.cardword.mapper.CommentMapper;
 import com.cardword.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -21,6 +23,9 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
 
     @Autowired
     private UserMapper userMapper;
+    
+    @Autowired
+    private CardMapper cardMapper;
 
     /**
      * 查询指定卡片下的所有评论
@@ -56,6 +61,10 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
             throw new RuntimeException("用户不存在");
         }
 
+        // 查询卡片信息，用于判断是否是匿名卡片
+        Card card = cardMapper.selectById(cardId);
+        boolean isAnonymousCard = card != null && card.getIsAnonymous() != null && card.getIsAnonymous() == 1;
+
         // 创建评论记录并入库
         Comment comment = new Comment();
         comment.setCardId(cardId);
@@ -71,13 +80,23 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
             comment.setParentId(parentId);
             // 冗余存储被回复者昵称，避免前端额外查询
             User replyToUser = userMapper.selectById(parent.getUserId());
-            comment.setReplyToNickname(replyToUser != null ? replyToUser.getNickname() : "匿名用户");
+            // 如果是匿名卡片且被回复者是卡片作者，则显示"匿名卡片作者"
+            if (isAnonymousCard && replyToUser != null && card != null && replyToUser.getId().equals(card.getUserId())) {
+                comment.setReplyToNickname("匿名卡片作者");
+            } else {
+                comment.setReplyToNickname(replyToUser != null ? replyToUser.getNickname() : "匿名用户");
+            }
         }
 
         save(comment);
 
         // 设置昵称用于返回给前端显示
-        comment.setNickname(user.getNickname());
+        // 如果是匿名卡片且评论者是卡片作者，则显示"匿名卡片作者"
+        if (isAnonymousCard && card != null && user.getId().equals(card.getUserId())) {
+            comment.setNickname("匿名卡片作者");
+        } else {
+            comment.setNickname(user.getNickname());
+        }
         return comment;
     }
 
@@ -102,7 +121,19 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
         Map<Long, String> nickMap = userMapper.selectBatchIds(userIds).stream()
                 .collect(Collectors.toMap(User::getId, User::getNickname));
 
+        // 获取卡片信息，判断是否是匿名卡片
+        Long cardId = comments.get(0).getCardId();
+        Card card = cardMapper.selectById(cardId);
+        boolean isAnonymousCard = card != null && card.getIsAnonymous() != null && card.getIsAnonymous() == 1;
+
         // 为每条评论设置昵称，用户不存在时默认显示"匿名用户"
-        comments.forEach(c -> c.setNickname(nickMap.getOrDefault(c.getUserId(), "匿名用户")));
+        comments.forEach(c -> {
+            // 如果是匿名卡片且评论者是卡片作者，则显示"匿名卡片作者"
+            if (isAnonymousCard && card != null && c.getUserId().equals(card.getUserId())) {
+                c.setNickname("匿名卡片作者");
+            } else {
+                c.setNickname(nickMap.getOrDefault(c.getUserId(), "匿名用户"));
+            }
+        });
     }
 }

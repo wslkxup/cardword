@@ -3,10 +3,16 @@
     <div class="comment-list" ref="commentListRef">
       <TransitionGroup name="comment-pop">
       <div v-for="c in comments" :key="c.id" class="comment-item">
-        <div class="comment-avatar">{{ (c.nickname || '?')[0] }}</div>
+        <div class="comment-avatar">
+          <template v-if="isAnonymousCard && c.userId === props.card?.userId">匿</template>
+          <template v-else>{{ (c.nickname || '?')[0] }}</template>
+        </div>
         <div class="comment-bubble">
           <div class="comment-bubble-header">
-            <span class="comment-author">{{ c.nickname }}</span>
+            <span class="comment-author">
+              <template v-if="isAnonymousCard && c.userId === props.card?.userId">匿名卡片作者</template>
+              <template v-else>{{ c.nickname }}</template>
+            </span>
             <span class="comment-time">{{ formatTime(c.createdAt) }}</span>
           </div>
           <p v-if="c.replyToNickname" class="comment-reply-tag">回复 @{{ c.replyToNickname }}</p>
@@ -19,11 +25,14 @@
     </div>
     <div v-if="props.userId" class="comment-input">
       <div v-if="replyTo" class="reply-hint">
-        <span>回复 @{{ replyTo.nickname }}</span>
+        <span>
+          <template v-if="isAnonymousCard && replyTo.userId === props.card?.userId">回复 @匿名卡片作者</template>
+          <template v-else>回复 @{{ replyTo.nickname }}</template>
+        </span>
         <button class="btn-cancel-reply" @click="cancelReply">取消</button>
       </div>
       <div class="input-row">
-        <input v-model="content" :placeholder="replyTo ? `回复 @${replyTo.nickname}...` : '写评论...'" class="input-content" @keyup.enter="submit" />
+        <input v-model="content" :placeholder="replyTo ? (isAnonymousCard && replyTo.userId === props.card?.userId ? '回复 @匿名卡片作者...' : `回复 @${replyTo.nickname}...`) : '写评论...'" class="input-content" @keyup.enter="submit" />
         <button class="btn-send" :class="{ 'btn-sent': sent }" :disabled="!content.trim() || sending" @click="submit">
           {{ sent ? '✓' : sending ? '...' : '发送' }}
         </button>
@@ -34,10 +43,10 @@
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { getComments, addComment } from '../api.js'
 
-const props = defineProps({ cardId: Number, userId: Number })
+const props = defineProps({ cardId: Number, userId: Number, card: Object })
 const emit = defineEmits(['commented'])
 
 const comments = ref([])
@@ -47,8 +56,10 @@ const sent = ref(false)
 const commentListRef = ref(null)
 const replyTo = ref(null)
 
+const isAnonymousCard = computed(() => props.card?.isAnonymous === 1)
+
 function setReply(comment) {
-  replyTo.value = { id: comment.id, nickname: comment.nickname }
+  replyTo.value = { id: comment.id, nickname: comment.nickname, userId: comment.userId }
 }
 
 function cancelReply() {

@@ -33,6 +33,18 @@
         </label>
       </div>
       
+      <!-- 匿名卡片选项 -->
+      <div class="anonymous-toggle">
+        <label class="switch-label">
+          <span class="switch-text">匿名卡片</span>
+          <div class="switch">
+            <input type="checkbox" v-model="isAnonymous" />
+            <span class="slider"></span>
+          </div>
+        </label>
+        <span class="anonymous-hint">发布后显示为"匿名卡片"，但本人可见</span>
+      </div>
+      
       <div class="form-actions">
         <button class="btn-cancel" @click="$emit('close')">取消</button>
         <button class="btn-submit" :disabled="!content.trim() && !imageUrl" @click="submit">写好了，发出去</button>
@@ -49,6 +61,7 @@ const emit = defineEmits(['close', 'published'])
 
 const content = ref('')
 const imageUrl = ref(null)
+const isAnonymous = ref(false)
 const uploading = ref(false)
 
 async function onFileChange(e) {
@@ -93,7 +106,7 @@ async function submit() {
   if (!content.value.trim() && !imageUrl.value) return
   
   const userId = getLocalUserId()
-  const res = await publishCard(content.value.trim(), '', userId, imageUrl.value)
+  const res = await publishCard(content.value.trim(), '', userId, imageUrl.value, isAnonymous.value ? 1 : 0)
   emit('published', res.data)
 }
 </script>
@@ -267,5 +280,74 @@ textarea:focus {
 .btn-upload:hover {
   background: var(--color-accent);
   color: #fff;
+}
+
+.anonymous-toggle {
+  margin-top: 12px;
+}
+
+.switch-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--color-text);
+}
+
+.switch-text {
+  font-weight: 500;
+}
+
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.3s;
+  border-radius: 24px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: 0.3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--color-accent);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+}
+
+.anonymous-hint {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 </style>

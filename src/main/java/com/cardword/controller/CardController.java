@@ -58,7 +58,8 @@ public class CardController {
         String nickname = (String) body.getOrDefault("nickname", "匿名用户");
         Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : null;
         String imageUrl = (String) body.get("imageUrl");
-        return cardService.publish(content, nickname, userId, imageUrl);
+        Integer isAnonymous = body.get("isAnonymous") != null ? Integer.valueOf(body.get("isAnonymous").toString()) : 0;
+        return cardService.publish(content, nickname, userId, imageUrl, isAnonymous);
     }
 
     /**
@@ -127,6 +128,14 @@ public class CardController {
         }
         boolean followed = cardService.toggleFollow(userId, id);
         return Collections.singletonMap("followed", followed);
+    }
+
+    /**
+     * 获取用户追的卡片ID列表
+     */
+    @GetMapping("/followed-ids")
+    public List<Long> followedCardIds(@RequestParam Long userId) {
+        return cardService.listFollowedCardIds(userId);
     }
 
     /**

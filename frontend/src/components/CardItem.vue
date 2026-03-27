@@ -12,8 +12,15 @@
 
     <div class="card-header">
       <div class="card-author-wrap">
-        <div class="card-avatar">{{ (card.user?.nickname || '匿')[0] }}</div>
-        <span class="card-author">{{ card.user?.nickname || '匿名用户' }}</span>
+        <div class="card-avatar">
+          <template v-if="card.isAnonymous === 1 && !isOwner">匿</template>
+          <template v-else>{{ (card.user?.nickname || '匿')[0] }}</template>
+        </div>
+        <span class="card-author">
+          <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片</template>
+          <template v-else>{{ card.user?.nickname || '匿名用户' }}</template>
+        </span>
+        <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
       </div>
       <button v-if="isOwner" class="btn-delete" @click="showConfirm = true">删除</button>
     </div>
@@ -28,26 +35,29 @@
     <div class="card-footer">
       <span class="card-time">{{ formatTime(card.createdAt) }}</span>
       <div class="card-actions">
-        <button class="btn-like" @click="handleLike">
+        <button class="btn-like" @click="handleLike" title="点赞">
           <span class="like-icon" :class="{ 'like-burst': justLiked }">❤</span>
           <span class="like-count" :class="{ 'count-pop': countAnimating }">{{ card.likesCount }}</span>
         </button>
-        <button class="btn-comment" @click="toggleComments">
+        <button class="btn-comment" @click="toggleComments" title="评论">
           💬 {{ card.commentCount || 0 }}
         </button>
-        <button class="btn-follow" :class="{ followed }" @click="handleFollow">
+        <button class="btn-follow" :class="{ followed }" @click="handleFollow" :title="followed ? '取消追' : '追'">
           <span class="follow-icon" :class="{ 'follow-burst': justFollowed }">{{ followed ? '★' : '☆' }}</span>
           <span class="follow-pop" v-if="justFollowed">追！</span>
         </button>
       </div>
     </div>
 
-    <CommentList
-      v-if="showComments"
-      :card-id="card.id"
-      :user-id="userId"
-      @commented="onCommented"
-    />
+    <Transition name="comment-slide">
+      <CommentList
+        v-if="showComments"
+        :card-id="card.id"
+        :user-id="userId"
+        :card="card"
+        @commented="onCommented"
+      />
+    </Transition>
 
     <!-- 卡片详情弹窗 -->
     <Teleport to="body">
@@ -61,9 +71,16 @@
 
             <!-- 发布者信息 -->
             <div class="detail-header">
-              <div class="detail-avatar">{{ (card.user?.nickname || '匿')[0] }}</div>
+              <div class="detail-avatar">
+                <template v-if="card.isAnonymous === 1 && !isOwner">匿</template>
+                <template v-else>{{ (card.user?.nickname || '匿')[0] }}</template>
+              </div>
               <div class="detail-info">
-                <span class="detail-nickname">{{ card.user?.nickname || '匿名用户' }}</span>
+                <span class="detail-nickname">
+                  <template v-if="card.isAnonymous === 1 && !isOwner">匿名用户</template>
+                  <template v-else>{{ card.user?.nickname || '匿名用户' }}</template>
+                </span>
+                <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
                 <span class="detail-time">{{ formatFullTime(card.createdAt) }}</span>
               </div>
             </div>
@@ -86,6 +103,7 @@
               <CommentList
                 :card-id="card.id"
                 :user-id="userId"
+                :card="card"
                 @commented="onCommented"
               />
             </div>
@@ -140,6 +158,10 @@ const showDetail = ref(false)
 const deleting = ref(false)
 const cardRef = ref(null)
 
+watch(() => props.initialFollowed, (val) => {
+  followed.value = val
+})
+
 const isOwner = computed(() => props.userId && props.card.userId === props.userId)
 
 const accentGradient = computed(() => {
@@ -158,7 +180,7 @@ const accentGradient = computed(() => {
 
 // ========== 点击卡片查看详情 ==========
 function onCardClick(e) {
-  // 点击按钮/链接/输入框时不弹详情
+  // 点击按钮/链接/输入框/评论区域时不弹详情
   if (e.target.closest('button, a, input, .comment-section')) return
   showDetail.value = true
 }
@@ -649,5 +671,39 @@ function previewImage(url) {
   0% { transform: scale(1); opacity: 1; filter: none; }
   40% { transform: scale(0.95); opacity: 0.7; filter: grayscale(0.5); }
   100% { transform: scale(0.8) translateY(-20px); opacity: 0; filter: grayscale(1); }
+}
+
+/* ========== 匿名卡片水印 ========== */
+.anonymous-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: rgba(107, 114, 128, 0.1);
+  color: #6b7280;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid rgba(107, 114, 128, 0.2);
+  font-weight: 500;
+}
+
+/* ========== 评论展开过渡动画 ========== */
+.comment-slide-enter-active,
+.comment-slide-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.comment-slide-enter-from,
+.comment-slide-leave-to {
+  opacity: 0;
+  max-height: 0;
+  transform: translateY(-10px);
+}
+
+.comment-slide-enter-to,
+.comment-slide-leave-from {
+  opacity: 1;
+  max-height: 1000px;
+  transform: translateY(0);
 }
 </style>

@@ -68,9 +68,10 @@ export function getMyCards(userId, page = 1, size = 10) {
  * @param {string} nickname - 发布者昵称（未登录时后端会使用匿名用户）
  * @param {number} userId   - 当前登录用户 ID
  * @param {string} imageUrl - 图片 URL（可选）
+ * @param {number} isAnonymous - 是否匿名卡片（0否，1是）
  */
-export function publishCard(content, nickname, userId, imageUrl = null) {
-  return api.post('/cards', { content, nickname, userId, imageUrl })
+export function publishCard(content, nickname, userId, imageUrl = null, isAnonymous = 0) {
+  return api.post('/cards', { content, nickname, userId, imageUrl, isAnonymous })
 }
 
 /**
@@ -124,6 +125,14 @@ export function followCard(cardId, userId) {
  */
 export function getFollowedCards(userId, page = 1, size = 10) {
   return api.get('/cards/followed', { params: { userId, page, size } })
+}
+
+/**
+ * 获取用户追的卡片ID列表
+ */
+export function getFollowedCardIds(userId) {
+  return api.get('/cards/followed-ids', { params: { userId } })
+    .then(res => res.data)
 }
 
 // ==================== 评论相关接口 ====================

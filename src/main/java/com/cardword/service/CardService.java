@@ -120,13 +120,14 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      * 如果传入了 userId 且用户存在，则以该用户身份发布；
      * 否则使用系统中唯一的"匿名用户"发布（不存在则自动创建）
      *
-     * @param content  卡片文本内容
-     * @param nickname 昵称（未登录时会被忽略，统一使用匿名用户）
-     * @param userId   发布者的用户 ID，为 null 表示未登录
-     * @param imageUrl 图片 URL（可选）
+     * @param content      卡片文本内容
+     * @param nickname     昵称（未登录时会被忽略，统一使用匿名用户）
+     * @param userId       发布者的用户 ID，为 null 表示未登录
+     * @param imageUrl     图片 URL（可选）
+     * @param isAnonymous  是否匿名卡片（0否，1是）
      * @return 创建好的卡片对象（包含用户信息和初始评论数 0）
      */
-    public Card publish(String content, String nickname, Long userId, String imageUrl) {
+    public Card publish(String content, String nickname, Long userId, String imageUrl, Integer isAnonymous) {
         User user = null;
         if (userId != null) {
             user = userMapper.selectById(userId);
@@ -146,6 +147,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         card.setUserId(user.getId());
         card.setContent(content);
         card.setImageUrl(imageUrl);
+        card.setIsAnonymous(isAnonymous);
         card.setLikesCount(0);
         save(card);
 
@@ -316,5 +318,19 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         result.setRecords(cards);
         result.setTotal(total);
         return result;
+    }
+
+    /**
+     * 获取用户追的卡片ID列表
+     */
+    public List<Long> listFollowedCardIds(Long userId) {
+        List<CardFollow> follows = cardFollowMapper.selectList(
+                new QueryWrapper<CardFollow>()
+                        .eq("user_id", userId)
+                        .select("card_id")
+        );
+        return follows.stream()
+                .map(CardFollow::getCardId)
+                .collect(Collectors.toList());
     }
 }

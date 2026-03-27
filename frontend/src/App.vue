@@ -259,7 +259,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
-import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, login, register, submitFeedback, followCard, getFollowedCards, getAnnouncements, getLatestAnnouncement } from './api.js'
+import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, login, register, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement } from './api.js'
 import CardItem from './components/CardItem.vue'
 import CardForm from './components/CardForm.vue'
 
@@ -382,6 +382,15 @@ async function loadCards() {
   loading.value = true
   const res = await getRandomCards()
   cards.value = res.data
+  // 如果用户已登录，加载收藏状态
+  if (userId.value) {
+    try {
+      const followedIds = await getFollowedCardIds(userId.value)
+      followedSet.value = new Set(followedIds)
+    } catch (err) {
+      console.error('加载收藏状态失败', err)
+    }
+  }
   loading.value = false
 }
 
@@ -397,6 +406,13 @@ async function loadMyCards() {
   const res = await getMyCards(userId.value, page.value, 10)
   cards.value = res.data.records
   hasMore.value = page.value < res.data.pages
+  // 加载收藏状态
+  try {
+    const followedIds = await getFollowedCardIds(userId.value)
+    followedSet.value = new Set(followedIds)
+  } catch (err) {
+    console.error('加载收藏状态失败', err)
+  }
   loading.value = false
 }
 
@@ -461,7 +477,7 @@ async function handleLogin() {
     localStorage.setItem('cardword_nickname', loginForm.value.nickname)
     showLogin.value = false
     showToast(`${loginForm.value.nickname}，欢迎回来！`, 'success')
-    if (activeTab.value === 'my') loadMyCards()
+    setTimeout(() => window.location.reload(), 500)
   } else {
     showToast(res.error || '登录失败', 'error')
   }
@@ -478,6 +494,7 @@ async function handleRegister() {
     localStorage.setItem('cardword_nickname', registerForm.value.nickname)
     showRegister.value = false
     showToast('注册成功！', 'success')
+    setTimeout(() => window.location.reload(), 500)
   } else if (res.error === '用户名已存在') {
     registerError.value = '用户名已存在，请换一个试试'
   } else {
@@ -539,7 +556,7 @@ function logout() {
   localStorage.removeItem('cardword_user_id')
   localStorage.removeItem('cardword_nickname')
   showToast('已退出登录', 'info')
-  if (activeTab.value === 'my') loadMyCards()
+  setTimeout(() => window.location.reload(), 500)
 }
 
 function onLiked(id, newCount) {
