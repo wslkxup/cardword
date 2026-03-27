@@ -5,8 +5,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.io.File;
 
 @Configuration
 public class WebConfig implements WebMvcConfigurer {
@@ -17,9 +16,16 @@ public class WebConfig implements WebMvcConfigurer {
     @Override
     public void addResourceHandlers(ResourceHandlerRegistry registry) {
         // 配置静态资源处理器，让上传的图片可以被访问
-        // Windows 路径需要特殊处理
-        String uploadDir = new java.io.File(uploadPath).getAbsolutePath().replace("\\", "/");
+        File uploadDir = new File(uploadPath).getAbsoluteFile();
+        String location = uploadDir.toURI().toString();
+        
+        System.out.println("========== 静态资源配置 ==========");
+        System.out.println("配置的上传路径: " + uploadPath);
+        System.out.println("绝对路径: " + uploadDir.getAbsolutePath());
+        System.out.println("资源位置: " + location);
+        System.out.println("================================");
+        
         registry.addResourceHandler("/api/uploads/**")
-                .addResourceLocations("file:/" + uploadDir + "/");
+                .addResourceLocations(location);
     }
 }
