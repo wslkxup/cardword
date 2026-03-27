@@ -16,9 +16,10 @@ public class FeedbackController {
     private FeedbackMapper feedbackMapper;
 
     @PostMapping
-    public Map<String, Object> submit(@RequestBody Map<String, String> body) {
-        String title = body.get("title");
-        String content = body.get("content");
+    public Map<String, Object> submit(@RequestBody Map<String, Object> body) {
+        String title = (String) body.get("title");
+        String content = (String) body.get("content");
+        Long userId = body.get("userId") != null ? Long.valueOf(body.get("userId").toString()) : 0L;
 
         if (title == null || title.trim().isEmpty()) {
             return Collections.singletonMap("error", "问题标题不能为空");
@@ -34,6 +35,7 @@ public class FeedbackController {
         }
 
         Feedback feedback = new Feedback();
+        feedback.setUserId(userId);
         feedback.setTitle(title.trim());
         feedback.setContent(content.trim());
         feedback.setStatus(0);

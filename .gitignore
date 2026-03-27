@@ -24,3 +24,7 @@ Thumbs.db
 uploads/
 upload/
 *.upload
+
+# SQL files
+sql/
+*.sql

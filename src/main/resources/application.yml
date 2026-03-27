@@ -22,6 +22,6 @@ mybatis-plus:
 
 # 文件上传配置
 upload:
-  path: ./upload/images
+  path: ./uploads/images
   max-size: 5MB
   allowed-types: image/jpeg,image/png,image/gif,image/webp

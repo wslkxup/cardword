@@ -206,9 +206,10 @@ export function getLatestAnnouncement(since) {
  *
  * @param {string} title   - 问题标题
  * @param {string} content - 问题描述
+ * @param {number} userId  - 用户ID（未登录时为 0）
  * @returns {Promise<object>} 成功返回 {success: true}，失败返回 {error: "..."}
  */
-export function submitFeedback(title, content) {
-  return api.post('/feedback', { title, content })
+export function submitFeedback(title, content, userId = 0) {
+  return api.post('/feedback', { title, content, userId })
     .then(res => res.data)
 }

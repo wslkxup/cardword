@@ -489,7 +489,8 @@ async function handleFeedback() {
   if (feedbackSubmitting.value) return
   feedbackSubmitting.value = true
   try {
-    const res = await submitFeedback(feedbackForm.value.title.trim(), feedbackForm.value.content.trim())
+    const userId = getLocalUserId() || 0
+    const res = await submitFeedback(feedbackForm.value.title.trim(), feedbackForm.value.content.trim(), userId)
     if (res.success) {
       showFeedback.value = false
       feedbackForm.value = { title: '', content: '' }

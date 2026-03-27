@@ -12,6 +12,7 @@ import java.time.LocalDateTime;
 public class Feedback {
     @TableId(type = IdType.AUTO)
     private Long id;
+    private Long userId;
     private String title;
     private String content;
     private Integer status;
