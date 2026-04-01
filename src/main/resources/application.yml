@@ -21,6 +21,6 @@ mybatis-plus:
 
 # 文件上传配置
 upload:
-  path: /opt/cardword/upload/image
+  path: "C:\\Users\\likexin\\Pictures\\image"
   max-size: 5MB
   allowed-types: image/jpeg,image/png,image/gif,image/webp

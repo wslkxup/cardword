@@ -9,6 +9,17 @@ import java.util.List;
 
 public interface CardMapper extends BaseMapper<Card> {
 
-    @Select("SELECT * FROM card ORDER BY RAND() LIMIT #{limit}")
-    List<Card> selectRandom(@Param("limit") int limit);
+    @Select({"<script>",
+            "SELECT * FROM card",
+            "<where>",
+            "<if test='excludeIds != null and excludeIds.size > 0'>",
+            "AND id NOT IN",
+            "<foreach collection='excludeIds' item='id' open='(' separator=',' close=')'>",
+            "#{id}",
+            "</foreach>",
+            "</if>",
+            "</where>",
+            "ORDER BY RAND() LIMIT #{limit}",
+            "</script>"})
+    List<Card> selectRandom(@Param("limit") int limit, @Param("excludeIds") List<Long> excludeIds);
 }

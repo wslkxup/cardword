@@ -43,8 +43,18 @@ public class CardController {
      * 用于首页 "换一批" 功能，每次返回随机排序的卡片
      */
     @GetMapping("/random")
-    public List<Card> random(@RequestParam(defaultValue = "10") int size) {
-        return cardService.randomCards(size);
+    public Map<String, Object> random(
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String excludeIds) {
+        List<Long> excludeIdList = Collections.emptyList();
+        if (excludeIds != null && !excludeIds.trim().isEmpty()) {
+            excludeIdList = java.util.Arrays.stream(excludeIds.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(Long::valueOf)
+                    .collect(java.util.stream.Collectors.toList());
+        }
+        return cardService.randomCards(size, excludeIdList);
     }
 
     /**

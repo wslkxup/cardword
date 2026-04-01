@@ -19,13 +19,13 @@ import java.util.UUID;
 @Service
 public class FileUploadService {
 
-    @Value("${upload.path:./uploads/images}")
+    @Value("${upload.path}")
     private String uploadPath;
 
-    @Value("${upload.max-size:5MB}")
+    @Value("${upload.max-size}")
     private String maxSize;
 
-    @Value("${upload.allowed-types:image/jpeg,image/png,image/gif,image/webp}")
+    @Value("${upload.allowed-types}")
     private String allowedTypes;
 
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -41,7 +41,7 @@ public class FileUploadService {
         validateFile(file);
 
         // 2. 创建上传目录
-        Path uploadDir = Paths.get(uploadPath);
+        Path uploadDir = Paths.get(uploadPath).toAbsolutePath().normalize();
         if (!Files.exists(uploadDir)) {
             Files.createDirectories(uploadDir);
         }
@@ -54,8 +54,8 @@ public class FileUploadService {
         }
 
         String originalFilename = file.getOriginalFilename();
-        String extension = originalFilename != null && originalFilename.contains(".") 
-            ? originalFilename.substring(originalFilename.lastIndexOf(".")) 
+        String extension = originalFilename != null && originalFilename.contains(".")
+            ? originalFilename.substring(originalFilename.lastIndexOf("."))
             : ".jpg";
         String filename = UUID.randomUUID().toString().replace("-", "") + extension;
 

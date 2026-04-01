@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -171,15 +172,32 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
 
     /**
      * 随机获取卡片列表（用于首页"换一批"功能）
-     * 使用数据库的 RAND() 函数随机排序，适合数据量不大的场景
+     * 优先排除前端传入的近期浏览卡片，若剩余不足则自动补齐，确保返回数量固定
      *
      * @param limit 返回的卡片数量上限
+     * @param excludeIds 需要尽量排除的卡片ID列表
      * @return 随机排序的卡片列表（已填充用户信息和评论数量）
      */
-    public List<Card> randomCards(int limit) {
-        List<Card> cards = baseMapper.selectRandom(limit);
+    public Map<String, Object> randomCards(int limit, List<Long> excludeIds) {
+        List<Long> normalizedExcludeIds = excludeIds == null ? Collections.emptyList() : excludeIds.stream()
+                .filter(id -> id != null)
+                .distinct()
+                .collect(Collectors.toList());
+
+        List<Card> cards = baseMapper.selectRandom(limit, normalizedExcludeIds);
+        boolean resetBlacklist = false;
+        if (cards.size() < limit) {
+            resetBlacklist = true;
+            Set<Long> selectedIds = cards.stream().map(Card::getId).collect(Collectors.toSet());
+            List<Card> fallbackCards = baseMapper.selectRandom(limit - cards.size(), new ArrayList<>(selectedIds));
+            cards.addAll(fallbackCards);
+        }
         fillCardExtraInfo(cards);
-        return cards;
+
+        Map<String, Object> result = new java.util.HashMap<>();
+        result.put("cards", cards);
+        result.put("resetBlacklist", resetBlacklist);
+        return result;
     }
 
     /**

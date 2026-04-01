@@ -106,10 +106,24 @@
     <main class="card-grid">
       <template v-if="loading">
         <div v-for="i in 6" :key="'sk'+i" class="skeleton-card">
-          <div class="skeleton-line" style="width: 35%"></div>
-          <div class="skeleton-line" style="width: 100%"></div>
-          <div class="skeleton-line" style="width: 85%"></div>
-          <div class="skeleton-line skeleton-last" style="width: 50%"></div>
+          <div class="skeleton-header">
+            <div class="skeleton-avatar"></div>
+            <div class="skeleton-nickname"></div>
+          </div>
+          <div class="skeleton-content">
+            <div class="skeleton-line" style="width: 100%"></div>
+            <div class="skeleton-line" style="width: 85%"></div>
+            <div class="skeleton-line" style="width: 60%"></div>
+          </div>
+          <div v-if="i % 3 === 0" class="skeleton-image"></div>
+          <div class="skeleton-footer">
+            <div class="skeleton-time"></div>
+            <div class="skeleton-actions">
+              <div class="skeleton-action"></div>
+              <div class="skeleton-action"></div>
+              <div class="skeleton-action"></div>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -277,6 +291,8 @@ const shuffling = ref(false)
 const darkMode = ref(localStorage.getItem('cardword_dark') === '1')
 const mySubTab = ref('cards')
 const followedSet = ref(new Set())
+const recentCardIds = ref([])
+const refreshingAll = ref(false)
 
 const loginForm = ref({ nickname: '', pwd: '' })
 const registerForm = ref({ nickname: '', pwd: '' })
@@ -378,20 +394,39 @@ function toggleDark() {
 }
 
 // ========== 数据加载 ==========
+function syncRecentCardIds(cardsList) {
+  const nextIds = cardsList.map(card => card.id).filter(id => id != null)
+  if (nextIds.length === 0) return
+
+  const merged = [...nextIds, ...recentCardIds.value.filter(id => !nextIds.includes(id))]
+  recentCardIds.value = merged.slice(0, 40)
+  localStorage.setItem('cardword_recent_card_ids', JSON.stringify(recentCardIds.value))
+}
+
 async function loadCards() {
   loading.value = true
-  const res = await getRandomCards()
-  cards.value = res.data
-  // 如果用户已登录，加载收藏状态
-  if (userId.value) {
-    try {
-      const followedIds = await getFollowedCardIds(userId.value)
-      followedSet.value = new Set(followedIds)
-    } catch (err) {
-      console.error('加载收藏状态失败', err)
+  try {
+    const excludeIds = recentCardIds.value.slice(0, 30)
+    const res = await getRandomCards(10, excludeIds)
+    const { cards: nextCards, resetBlacklist } = res
+    if (resetBlacklist) {
+      recentCardIds.value = []
+      localStorage.removeItem('cardword_recent_card_ids')
     }
+    cards.value = nextCards
+    syncRecentCardIds(cards.value)
+    // 如果用户已登录，加载收藏状态
+    if (userId.value) {
+      try {
+        const followedIds = await getFollowedCardIds(userId.value)
+        followedSet.value = new Set(followedIds)
+      } catch (err) {
+        console.error('加载收藏状态失败', err)
+      }
+    }
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 async function loadMyCards() {
@@ -435,9 +470,14 @@ function switchMySubTab(sub) {
 }
 
 function shuffle() {
+  if (refreshingAll.value) return
+  refreshingAll.value = true
   shuffling.value = true
   loadCards()
-  setTimeout(() => { shuffling.value = false }, 1000)
+    .finally(() => {
+      shuffling.value = false
+      refreshingAll.value = false
+    })
 }
 
 async function loadMore() {
@@ -599,6 +639,14 @@ async function loadFollowedCards() {
 }
 
 onMounted(() => {
+  const storedRecent = localStorage.getItem('cardword_recent_card_ids')
+  if (storedRecent) {
+    try {
+      recentCardIds.value = JSON.parse(storedRecent)
+    } catch {
+      recentCardIds.value = []
+    }
+  }
   loadCards()
   typeStep()
   checkNewAnnouncement()
@@ -748,13 +796,123 @@ body {
 .nav-btn:hover::after { opacity: 1; }
 
 /* ========== 瀑布流 ========== */
-.card-grid { column-count: 2; column-gap: 20px; position: relative; z-index: 1; }
+.card-grid {
+  column-count: 2;
+  column-gap: 20px;
+  column-fill: balance;
+  position: relative;
+  z-index: 1;
+}
+
+.card-grid > * {
+  width: 100%;
+}
 
 /* ========== 骨架屏 ========== */
-.skeleton-card { background: var(--color-bg-card); border-radius: 16px; padding: 24px; margin-bottom: 20px; break-inside: avoid; }
-.skeleton-line { height: 14px; border-radius: 7px; background: linear-gradient(90deg, var(--color-skeleton) 25%, var(--color-skeleton-shine) 50%, var(--color-skeleton) 75%); background-size: 200% 100%; animation: shimmer 1.5s ease infinite; margin-bottom: 12px; }
-.skeleton-last { margin-bottom: 0; }
-@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+.skeleton-card {
+  background: var(--color-bg-card);
+  border-radius: 16px;
+  padding: 24px;
+  padding-top: 27px;
+  margin-bottom: 20px;
+  break-inside: avoid;
+  border: 1px solid var(--color-border);
+  position: relative;
+  overflow: hidden;
+}
+
+.skeleton-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--color-skeleton);
+  opacity: 0.3;
+}
+
+.skeleton-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.skeleton-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-skeleton);
+  animation: shimmer 1.5s ease infinite;
+}
+
+.skeleton-nickname {
+  height: 14px;
+  width: 60px;
+  border-radius: 7px;
+  background: var(--color-skeleton);
+  animation: shimmer 1.5s ease infinite;
+}
+
+.skeleton-content {
+  margin-bottom: 16px;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: 7px;
+  background: linear-gradient(90deg, var(--color-skeleton) 25%, var(--color-skeleton-shine) 50%, var(--color-skeleton) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease infinite;
+  margin-bottom: 12px;
+}
+
+.skeleton-line:last-child { margin-bottom: 0; }
+
+.skeleton-image {
+  width: 100%;
+  height: 180px;
+  border-radius: 12px;
+  background: var(--color-skeleton);
+  margin-bottom: 16px;
+  animation: shimmer 1.5s ease infinite;
+}
+
+.skeleton-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+}
+
+.skeleton-time {
+  height: 12px;
+  width: 50px;
+  border-radius: 6px;
+  background: var(--color-skeleton);
+  animation: shimmer 1.5s ease infinite;
+}
+
+.skeleton-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.skeleton-action {
+  width: 32px;
+  height: 22px;
+  border-radius: 11px;
+  background: var(--color-skeleton);
+  animation: shimmer 1.5s ease infinite;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 
 /* ========== 空状态 ========== */
 .empty-state { column-span: all; text-align: center; padding: 60px 20px; color: var(--color-text-muted); }

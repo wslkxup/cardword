@@ -1,11 +1,12 @@
 import axios from 'axios'
 
+const apiBaseURL = import.meta.env.VITE_API_BASE_URL || '/api'
+
 /**
  * 创建 axios 实例，统一配置基础路径和超时时间
- * baseURL 设为 '/api'，前端开发时由 Vite 代理转发到后端服务
  */
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: apiBaseURL,
   timeout: 10000
 })
 
@@ -46,8 +47,12 @@ export function getCards(page = 1, size = 10) {
  *
  * @param {number} size - 获取数量，默认 10
  */
-export function getRandomCards(size = 10) {
-  return api.get('/cards/random', { params: { size } })
+export function getRandomCards(size = 10, excludeIds = []) {
+  const params = { size }
+  if (excludeIds.length > 0) {
+    params.excludeIds = excludeIds.join(',')
+  }
+  return api.get('/cards/random', { params }).then(res => res.data)
 }
 
 /**

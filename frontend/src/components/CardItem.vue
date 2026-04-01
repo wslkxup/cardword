@@ -395,6 +395,7 @@ function previewImage(url) {
   cursor: pointer;
 }
 
+
 @keyframes cardEnter {
   from {
     opacity: 0;
