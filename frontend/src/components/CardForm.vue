@@ -104,9 +104,13 @@ function removeImage() {
 
 async function submit() {
   if (!content.value.trim() && !imageUrl.value) return
-  
-  const userId = getLocalUserId()
-  const res = await publishCard(content.value.trim(), '', userId, imageUrl.value, isAnonymous.value ? 1 : 0)
+
+  const res = await publishCard(
+    content.value.trim(),
+    '',
+    imageUrl.value,
+    isAnonymous.value ? 1 : 0
+  )
   emit('published', res.data)
 }
 </script>

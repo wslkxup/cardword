@@ -14,15 +14,15 @@
       <div class="card-author-wrap">
         <div class="card-avatar">
           <template v-if="card.isAnonymous === 1 && !isOwner">匿</template>
-          <template v-else>{{ (card.user?.nickname || '匿')[0] }}</template>
+          <template v-else>{{ (card.username || '匿')[0] }}</template>
         </div>
         <span class="card-author">
           <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片</template>
-          <template v-else>{{ card.user?.nickname || '匿名用户' }}</template>
+          <template v-else>{{ card.username || '' }}</template>
         </span>
         <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
       </div>
-      <button v-if="isOwner" class="btn-delete" @click="showConfirm = true">删除</button>
+      <button v-if="isOwner && allowDelete" class="btn-delete" @click.stop="showConfirm = true">删除</button>
     </div>
 
     <div class="card-content">{{ card.content }}</div>
@@ -73,12 +73,12 @@
             <div class="detail-header">
               <div class="detail-avatar">
                 <template v-if="card.isAnonymous === 1 && !isOwner">匿</template>
-                <template v-else>{{ (card.user?.nickname || '匿')[0] }}</template>
+                <template v-else>{{ (card.username || '匿')[0] }}</template>
               </div>
               <div class="detail-info">
                 <span class="detail-nickname">
-                  <template v-if="card.isAnonymous === 1 && !isOwner">匿名用户</template>
-                  <template v-else>{{ card.user?.nickname || '匿名用户' }}</template>
+                  <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片作者</template>
+                  <template v-else>{{ card.username || '' }}</template>
                 </span>
                 <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
                 <span class="detail-time">{{ formatFullTime(card.createdAt) }}</span>
@@ -142,7 +142,8 @@ const props = defineProps({
   card: Object,
   userId: Number,
   index: { type: Number, default: 0 },
-  initialFollowed: { type: Boolean, default: false }
+  initialFollowed: { type: Boolean, default: false },
+  allowDelete: { type: Boolean, default: true }
 })
 
 const emit = defineEmits(['liked', 'deleted', 'followed'])
@@ -162,7 +163,12 @@ watch(() => props.initialFollowed, (val) => {
   followed.value = val
 })
 
-const isOwner = computed(() => props.userId && props.card.userId === props.userId)
+const isOwner = computed(() => {
+  if (props.card && props.card.isOwner !== undefined && props.card.isOwner !== null) {
+    return !!props.card.isOwner
+  }
+  return props.userId && props.card.userId === props.userId
+})
 
 const accentGradient = computed(() => {
   const gradients = [

@@ -27,6 +27,9 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
     @Autowired
     private CardMapper cardMapper;
 
+    @Autowired
+    private UserService userService;
+
     /**
      * 查询指定卡片下的所有评论
      * 按创建时间正序排列，并批量填充每条评论的发布者昵称
@@ -55,21 +58,36 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
      * @throws RuntimeException 当 userId 对应的用户不存在时抛出异常
      */
     public Comment addComment(Long cardId, String content, Long userId, Long parentId) {
-        // 查询用户是否存在，防止传入伪造的 userId
-        User user = userMapper.selectById(userId);
-        if (user == null) {
-            throw new RuntimeException("用户不存在");
-        }
-
-        // 查询卡片信息，用于判断是否是匿名卡片
+        // 查询卡片信息，用于判断是否是匿名卡片和获取卡片作者信息
         Card card = cardMapper.selectById(cardId);
-        boolean isAnonymousCard = card != null && card.getIsAnonymous() != null && card.getIsAnonymous() == 1;
+        if (card == null) {
+            throw new RuntimeException("卡片不存在");
+        }
+        boolean isAnonymousCard = card.getIsAnonymous() != null && card.getIsAnonymous() == 1;
+        boolean isCardAuthor = userId.equals(card.getUserId());
 
         // 创建评论记录并入库
         Comment comment = new Comment();
         comment.setCardId(cardId);
-        comment.setUserId(user.getId());
+        comment.setUserId(userId);
         comment.setContent(content);
+
+        // 设置评论者昵称（冗余存储到 username 字段）
+        if (isCardAuthor) {
+            // 如果是卡片作者，直接从卡片表获取 username
+            if (isAnonymousCard) {
+                comment.setUsername("匿名卡片作者");
+            } else {
+                comment.setUsername(card.getUsername());
+            }
+        } else {
+            // 如果不是卡片作者，需要查询用户表获取昵称
+            User user = userMapper.selectById(userId);
+            if (user == null) {
+                throw new RuntimeException("用户不存在");
+            }
+            comment.setUsername(user.getNickname());
+        }
 
         // 若指定了父评论，校验其存在且属于同一张卡片
         if (parentId != null) {
@@ -78,61 +96,51 @@ public class CommentService extends ServiceImpl<CommentMapper, Comment> {
                 throw new RuntimeException("被回复的评论不存在");
             }
             comment.setParentId(parentId);
-            // 冗余存储被回复者昵称，避免前端额外查询
-            User replyToUser = userMapper.selectById(parent.getUserId());
+            // 记录被回复者的用户 ID
+            comment.setReplyToUserId(parent.getUserId());
+            // 直接设置回复对象的昵称（用于立即返回给前端）
             // 如果是匿名卡片且被回复者是卡片作者，则显示"匿名卡片作者"
-            if (isAnonymousCard && replyToUser != null && card != null && replyToUser.getId().equals(card.getUserId())) {
+            if (isAnonymousCard && parent.getUserId().equals(card.getUserId())) {
                 comment.setReplyToNickname("匿名卡片作者");
             } else {
-                comment.setReplyToNickname(replyToUser != null ? replyToUser.getNickname() : "匿名用户");
+                // 从父评论的 username 字段获取
+                comment.setReplyToNickname(parent.getUsername());
             }
         }
 
         save(comment);
 
-        // 设置昵称用于返回给前端显示
-        // 如果是匿名卡片且评论者是卡片作者，则显示"匿名卡片作者"
-        if (isAnonymousCard && card != null && user.getId().equals(card.getUserId())) {
-            comment.setNickname("匿名卡片作者");
-        } else {
-            comment.setNickname(user.getNickname());
-        }
+        // 参与评论奖励 1 经验值
+        userService.addExp(userId, 1);
+
+        // 设置昵称用于返回给前端显示（直接使用 username 字段）
+        comment.setNickname(comment.getUsername());
         return comment;
     }
 
     /**
      * 批量填充评论列表中每条评论的发布者昵称
-     * 先收集所有去重的 userId，一次性批量查询用户表，
-     * 然后通过 Map 映射回每条评论，避免 N+1 查询问题
+     * 直接从评论表的 username 字段获取，不需要查询用户表
      *
      * @param comments 需要填充昵称的评论列表
      */
     private void fillNicknames(List<Comment> comments) {
         if (comments.isEmpty()) return;
 
-        // 收集所有评论涉及的用户ID（去重）
-        Set<Long> userIds = comments.stream()
-                .map(Comment::getUserId)
-                .filter(Objects::nonNull)
-                .collect(Collectors.toSet());
-        if (userIds.isEmpty()) return;
-
-        // 批量查询用户，构建 userId -> nickname 的映射
-        Map<Long, String> nickMap = userMapper.selectBatchIds(userIds).stream()
-                .collect(Collectors.toMap(User::getId, User::getNickname));
-
-        // 获取卡片信息，判断是否是匿名卡片
-        Long cardId = comments.get(0).getCardId();
-        Card card = cardMapper.selectById(cardId);
-        boolean isAnonymousCard = card != null && card.getIsAnonymous() != null && card.getIsAnonymous() == 1;
-
-        // 为每条评论设置昵称，用户不存在时默认显示"匿名用户"
+        // 为每条评论设置昵称（直接使用 username 字段）
         comments.forEach(c -> {
-            // 如果是匿名卡片且评论者是卡片作者，则显示"匿名卡片作者"
-            if (isAnonymousCard && card != null && c.getUserId().equals(card.getUserId())) {
-                c.setNickname("匿名卡片作者");
-            } else {
-                c.setNickname(nickMap.getOrDefault(c.getUserId(), "匿名用户"));
+            c.setNickname(c.getUsername());
+            
+            // 设置回复对象的昵称
+            if (c.getParentId() != null) {
+                // 从评论列表中查找父评论（使用 parentId 查找）
+                Comment replyToComment = comments.stream()
+                        .filter(rc -> rc.getId().equals(c.getParentId()))
+                        .findFirst()
+                        .orElse(null);
+                if (replyToComment != null) {
+                    c.setReplyToNickname(replyToComment.getUsername());
+                }
             }
         });
     }

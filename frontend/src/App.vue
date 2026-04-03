@@ -56,7 +56,7 @@
       <button
         v-if="!userId"
         class="nav-btn nav-btn-primary"
-        @click="showLogin = true"
+        @click="openLogin"
         title="进入小站"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
@@ -64,7 +64,7 @@
       <button
         v-if="!userId"
         class="nav-btn"
-        @click="showRegister = true"
+        @click="openRegister"
         title="加入小站"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
@@ -91,15 +91,29 @@
     <div v-if="activeTab === 'my' && userId" class="my-profile">
       <div class="profile-header">
         <div class="profile-avatar">{{ (userNickname || '?')[0] }}</div>
-        <span class="profile-nickname">{{ userNickname || '用户' }}</span>
+        <div class="profile-info">
+          <span class="profile-nickname">{{ userNickname || '用户' }}</span>
+          <div class="level-info" v-if="userInfo.level !== undefined">
+            <span class="level-badge">Lv.{{ userInfo.level }}</span>
+            <div class="exp-bar">
+              <div class="exp-progress" :style="{ width: expProgress + '%' }"></div>
+            </div>
+            <span class="exp-text">{{ userInfo.exp }} / {{ userInfo.nextLevelExp }} 经验</span>
+          </div>
+        </div>
         <button class="theme-toggle-btn" @click="toggleDark" :title="darkMode ? '切换浅色模式' : '切换深色模式'">
           <svg v-if="darkMode" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
           <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
         </button>
       </div>
       <div class="my-sub-tabs">
-        <button :class="['sub-tab', { active: mySubTab === 'cards' }]" @click="switchMySubTab('cards')">我的卡片</button>
-        <button :class="['sub-tab', { active: mySubTab === 'followed' }]" @click="switchMySubTab('followed')">我追的</button>
+        <div class="sub-tab-group">
+          <button :class="['sub-tab', { active: mySubTab === 'cards' }]" @click="switchMySubTab('cards')">我的卡片</button>
+          <button :class="['sub-tab', { active: mySubTab === 'followed' }]" @click="switchMySubTab('followed')">我追的</button>
+        </div>
+        <button class="btn-outline" @click="showChangePassword = true">
+          修改密码
+        </button>
       </div>
     </div>
 
@@ -135,6 +149,7 @@
           :user-id="userId"
           :index="index"
           :initial-followed="followedSet.has(card.id)"
+          :allow-delete="activeTab === 'my' && mySubTab === 'cards'"
           @liked="onLiked"
           @deleted="onDeleted"
           @followed="onFollowed"
@@ -211,6 +226,11 @@
             <label>密码</label>
             <input type="password" v-model="registerForm.pwd" placeholder="请输入密码" />
           </div>
+          <div class="form-group">
+            <label>确认密码</label>
+            <input type="password" v-model="registerForm.confirmPwd" placeholder="请再次输入密码" />
+            <span v-if="registerPwdError" class="form-error">{{ registerPwdError }}</span>
+          </div>
           <div class="modal-buttons">
             <button class="btn-cancel" @click="showRegister = false">取消</button>
             <button class="btn-submit" @click="handleRegister">加入小站</button>
@@ -262,6 +282,32 @@
       </div>
     </Transition>
 
+    <Transition name="modal">
+      <div v-if="showChangePassword" class="modal" @click.self="() => { showChangePassword = false; resetChangePasswordForm() }">
+        <div class="modal-content" style="max-width: 420px;">
+          <h3>修改密码</h3>
+          <div class="form-group">
+            <label>旧密码</label>
+            <input type="password" v-model="changePasswordForm.oldPwd" placeholder="请输入旧密码" />
+          </div>
+          <div class="form-group">
+            <label>新密码</label>
+            <input type="password" v-model="changePasswordForm.newPwd" placeholder="请输入新密码" />
+          </div>
+          <div class="form-group">
+            <label>确认新密码</label>
+            <input type="password" v-model="changePasswordForm.confirmPwd" placeholder="请再次输入新密码" />
+          </div>
+          <div class="modal-buttons">
+            <button class="btn-cancel" @click="() => { showChangePassword = false; resetChangePasswordForm() }">取消</button>
+            <button class="btn-submit" :disabled="changePasswordSubmitting" @click="handleChangePassword">
+              {{ changePasswordSubmitting ? '提交中...' : '确认修改' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
+
     <footer class="footer">
       <svg class="footer-wave" viewBox="0 0 1440 60" preserveAspectRatio="none">
         <path d="M0,20 C240,50 480,0 720,25 C960,50 1200,10 1440,30 L1440,60 L0,60Z" fill="var(--color-accent)" opacity="0.06"/>
@@ -273,7 +319,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
-import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, login, register, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement } from './api.js'
+import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, getLocalToken, setLocalToken, login, register, logout as apiLogout, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement, changePassword, getUserInfo } from './api.js'
 import CardItem from './components/CardItem.vue'
 import CardForm from './components/CardForm.vue'
 
@@ -295,13 +341,49 @@ const recentCardIds = ref([])
 const refreshingAll = ref(false)
 
 const loginForm = ref({ nickname: '', pwd: '' })
-const registerForm = ref({ nickname: '', pwd: '' })
+const registerForm = ref({ nickname: '', pwd: '', confirmPwd: '' })
 const showFeedback = ref(false)
 const feedbackForm = ref({ title: '', content: '' })
 const feedbackSubmitting = ref(false)
 const showAnnouncements = ref(false)
 const announcements = ref([])
 const hasNewAnnouncement = ref(false)
+const showChangePassword = ref(false)
+const changePasswordForm = ref({ oldPwd: '', newPwd: '', confirmPwd: '' })
+const changePasswordSubmitting = ref(false)
+const userInfo = ref({})
+const expProgress = ref(0)
+
+function resetChangePasswordForm() {
+  changePasswordForm.value = { oldPwd: '', newPwd: '', confirmPwd: '' }
+}
+
+async function handleChangePassword() {
+  if (changePasswordSubmitting.value) return
+  if (!changePasswordForm.value.oldPwd || !changePasswordForm.value.newPwd || !changePasswordForm.value.confirmPwd) {
+    showToast('请填写完整信息', 'warning')
+    return
+  }
+  if (changePasswordForm.value.newPwd !== changePasswordForm.value.confirmPwd) {
+    showToast('两次输入的新密码不一致', 'error')
+    return
+  }
+  changePasswordSubmitting.value = true
+  try {
+    const res = await changePassword(changePasswordForm.value.oldPwd, changePasswordForm.value.newPwd)
+    if (res.success) {
+      showToast('密码修改成功', 'success')
+      showChangePassword.value = false
+      resetChangePasswordForm()
+    } else {
+      showToast(res.error || '修改失败', 'error')
+    }
+  } catch (err) {
+    showToast(err?.response?.data?.error || '网络异常，请稍后重试', 'error')
+  } finally {
+    changePasswordSubmitting.value = false
+  }
+}
 
 // ========== Toast 通知系统 ==========
 const toasts = ref([])
@@ -418,7 +500,7 @@ async function loadCards() {
     // 如果用户已登录，加载收藏状态
     if (userId.value) {
       try {
-        const followedIds = await getFollowedCardIds(userId.value)
+        const followedIds = await getFollowedCardIds()
         followedSet.value = new Set(followedIds)
       } catch (err) {
         console.error('加载收藏状态失败', err)
@@ -438,12 +520,12 @@ async function loadMyCards() {
   }
   loading.value = true
   page.value = 1
-  const res = await getMyCards(userId.value, page.value, 10)
+  const res = await getMyCards(page.value, 10)
   cards.value = res.data.records
   hasMore.value = page.value < res.data.pages
   // 加载收藏状态
   try {
-    const followedIds = await getFollowedCardIds(userId.value)
+    const followedIds = await getFollowedCardIds()
     followedSet.value = new Set(followedIds)
   } catch (err) {
     console.error('加载收藏状态失败', err)
@@ -483,18 +565,22 @@ function shuffle() {
 async function loadMore() {
   page.value++
   if (mySubTab.value === 'followed') {
-    const res = await getFollowedCards(userId.value, page.value, 10)
+    const res = await getFollowedCards(page.value, 10)
     cards.value = [...cards.value, ...res.data.records]
     hasMore.value = page.value < res.data.pages
   } else {
-    const res = await getMyCards(userId.value, page.value, 10)
+    const res = await getMyCards(page.value, 10)
     cards.value = [...cards.value, ...res.data.records]
     hasMore.value = page.value < res.data.pages
   }
 }
 
 async function onPublished(card) {
-  if (card.user && card.user.id) {
+  if (!userId.value) {
+    userNickname.value = card.username || ''
+    localStorage.setItem('cardword_nickname', userNickname.value)
+  }
+  if (!userId.value && card.user && card.user.id) {
     userId.value = card.user.id
     setLocalUserId(card.user.id)
   }
@@ -510,11 +596,14 @@ async function onPublished(card) {
 
 async function handleLogin() {
   const res = await login(loginForm.value.nickname, loginForm.value.pwd)
-  if (res.userId) {
-    userId.value = res.userId
+  if (res.token) {
+    setLocalToken(res.token)
     setLocalUserId(res.userId)
+    userId.value = res.userId
     userNickname.value = loginForm.value.nickname
     localStorage.setItem('cardword_nickname', loginForm.value.nickname)
+    // 清空密码
+    loginForm.value.pwd = ''
     showLogin.value = false
     showToast(`${loginForm.value.nickname}，欢迎回来！`, 'success')
     setTimeout(() => window.location.reload(), 500)
@@ -523,15 +612,59 @@ async function handleLogin() {
   }
 }
 
+// 加载用户信息（经验值和等级）
+async function loadUserInfo() {
+  if (!userId.value) return
+  try {
+    const info = await getUserInfo()
+    if (info.id) {
+      userInfo.value = info
+      // 计算进度条百分比：使用总经验值除以下一级所需总经验值
+      const totalExp = info.exp || 0
+      const nextLevelExp = info.nextLevelExp || 1
+      expProgress.value = Math.min(100, Math.max(0, (totalExp / nextLevelExp) * 100))
+    }
+  } catch (err) {
+    console.error('加载用户信息失败:', err)
+  }
+}
+
+function openLogin() {
+  // 清空密码
+  loginForm.value.pwd = ''
+  showLogin.value = true
+}
+
+function openRegister() {
+  // 清空密码
+  registerForm.value.pwd = ''
+  registerForm.value.confirmPwd = ''
+  registerError.value = ''
+  registerPwdError.value = ''
+  showRegister.value = true
+}
+
 const registerError = ref('')
+const registerPwdError = ref('')
 async function handleRegister() {
   registerError.value = ''
+  registerPwdError.value = ''
+  
+  // 检查两次密码是否一致
+  if (registerForm.value.pwd !== registerForm.value.confirmPwd) {
+    registerPwdError.value = '两次输入的密码不一致'
+    return
+  }
+  
   const res = await register(registerForm.value.nickname, registerForm.value.pwd)
   if (res.userId) {
     userId.value = res.userId
     setLocalUserId(res.userId)
     userNickname.value = registerForm.value.nickname
     localStorage.setItem('cardword_nickname', registerForm.value.nickname)
+    // 清空密码
+    registerForm.value.pwd = ''
+    registerForm.value.confirmPwd = ''
     showRegister.value = false
     showToast('注册成功！', 'success')
     setTimeout(() => window.location.reload(), 500)
@@ -595,6 +728,8 @@ function logout() {
   userNickname.value = ''
   localStorage.removeItem('cardword_user_id')
   localStorage.removeItem('cardword_nickname')
+  showChangePassword.value = false
+  resetChangePasswordForm()
   showToast('已退出登录', 'info')
   setTimeout(() => window.location.reload(), 500)
 }
@@ -650,6 +785,7 @@ onMounted(() => {
   loadCards()
   typeStep()
   checkNewAnnouncement()
+  loadUserInfo()
 })
 
 onUnmounted(() => {
@@ -1285,10 +1421,59 @@ body {
   flex-shrink: 0;
 }
 
+.profile-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
 .profile-nickname {
   font-size: 20px;
   font-weight: 700;
   color: var(--color-text);
+}
+
+.level-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.level-badge {
+  background: linear-gradient(135deg, #4361ee, #7c3aed);
+  color: #fff;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.exp-bar {
+  flex: 1;
+  height: 8px;
+  background: var(--color-border);
+  border-radius: 4px;
+  overflow: hidden;
+  position: relative;
+}
+
+.exp-progress {
+  height: 100%;
+  background: linear-gradient(90deg, #4361ee, #7c3aed);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.exp-text {
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  white-space: nowrap;
+  min-width: 100px;
+  text-align: right;
 }
 
 .theme-toggle-btn {
@@ -1318,10 +1503,17 @@ body {
   border-color: var(--color-accent);
 }
 
+
 .my-sub-tabs {
   display: flex;
-  gap: 0;
+  align-items: center;
+  justify-content: space-between;
   border-bottom: 2px solid var(--color-border);
+}
+
+.sub-tab-group {
+  display: flex;
+  gap: 0;
 }
 
 .sub-tab {
@@ -1356,7 +1548,31 @@ body {
   border-radius: 1px;
 }
 
-/* ========== 右上角公告铃铛 ========== */
+.my-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+
+.btn-outline {
+  padding: 6px 18px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-outline:hover {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+
 .bell-btn {
   position: fixed;
   top: 20px;

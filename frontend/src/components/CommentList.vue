@@ -69,6 +69,8 @@ function cancelReply() {
 async function loadComments() {
   const res = await getComments(props.cardId)
   comments.value = res
+  // 加载完成后强制刷新视图
+  await nextTick()
 }
 
 async function submit() {
@@ -77,6 +79,7 @@ async function submit() {
   try {
     const parentId = replyTo.value ? replyTo.value.id : null
     const res = await addComment(props.cardId, content.value.trim(), '', parentId)
+    // 新评论的 replyToUserId 可能指向已存在的评论，需要确保能正确显示
     comments.value.push(res)
     content.value = ''
     replyTo.value = null

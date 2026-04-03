@@ -16,11 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
@@ -33,6 +29,9 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
     private CommentMapper commentMapper;
 
     @Autowired
+    private UserService userService;
+
+    @Autowired
     private CardFollowMapper cardFollowMapper;
 
     /**
@@ -43,30 +42,26 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      * @param size 每页条数
      * @return 分页结果，包含卡片列表及分页元数据
      */
-    public IPage<Card> listCards(int page, int size) {
+    public IPage<Card> listCards(int page, int size, Long viewerId) {
         Page<Card> p = new Page<>(page, size);
         IPage<Card> cards = lambdaQuery()
                 .orderByDesc(Card::getCreatedAt)
                 .page(p);
-        // 填充关联数据：用户信息 + 评论数量
         fillCardExtraInfo(cards.getRecords());
+        applyViewerVisibility(cards.getRecords(), viewerId);
         return cards;
     }
 
     /**
      * 批量填充卡片的用户信息
-     * 遍历卡片列表，根据每张卡片的 userId 查询对应的 User 对象并设置到 card.user 字段
-     * 这样前端可以直接通过 card.user.nickname 获取发布者昵称
+     * 直接从卡片的 username 字段读取，无需关联查询用户表
+     * 提升查询性能
      *
      * @param cards 需要填充用户信息的卡片列表
      */
     private void fillUserInfo(List<Card> cards) {
-        for (Card card : cards) {
-            User user = userMapper.selectById(card.getUserId());
-            if (user != null) {
-                card.setUser(user);
-            }
-        }
+        // 无需处理，username 字段已经直接从数据库读取
+        // 前端可以直接使用 card.username 获取用户名
     }
 
     /**
@@ -116,45 +111,56 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         fillCommentCount(cards);
     }
 
+    private void applyViewerVisibility(List<Card> cards, Long viewerId) {
+        if (cards == null) return;
+        for (Card card : cards) {
+            boolean isOwner = viewerId != null && card.getUserId() != null && card.getUserId().equals(viewerId);
+            card.setIsOwner(isOwner);
+            // 如果是匿名卡片且不是所有者，隐藏用户信息
+            if (card.getIsAnonymous() != null && card.getIsAnonymous() == 1 && !isOwner) {
+                card.setUserId(null);
+                card.setUsername("");
+            }
+        }
+    }
+
     /**
      * 发布一张新卡片
-     * 如果传入了 userId 且用户存在，则以该用户身份发布；
-     * 否则使用系统中唯一的"匿名用户"发布（不存在则自动创建）
+     * 必须登录才能发布卡片，userId 不能为 null
      *
      * @param content      卡片文本内容
-     * @param nickname     昵称（未登录时会被忽略，统一使用匿名用户）
-     * @param userId       发布者的用户 ID，为 null 表示未登录
+     * @param nickname     用户昵称
+     * @param userId       发布者的用户 ID，不能为 null
      * @param imageUrl     图片 URL（可选）
-     * @param isAnonymous  是否匿名卡片（0否，1是）
+     * @param isAnonymous  是否匿名卡片（0 否，1 是）
      * @return 创建好的卡片对象（包含用户信息和初始评论数 0）
      */
     public Card publish(String content, String nickname, Long userId, String imageUrl, Integer isAnonymous) {
-        User user = null;
-        if (userId != null) {
-            user = userMapper.selectById(userId);
+        // 必须登录才能发布
+        if (userId == null) {
+            throw new IllegalArgumentException("必须登录才能发布卡片");
         }
+        
+        User user = userMapper.selectById(userId);
         if (user == null) {
-            // 未登录时复用唯一的匿名用户，不存在则创建
-            user = userMapper.selectOne(new QueryWrapper<User>()
-                    .eq("nickname", "匿名用户"));
-            if (user == null) {
-                user = new User();
-                user.setNickname("匿名用户");
-                userMapper.insert(user);
-            }
+            throw new IllegalArgumentException("用户不存在");
         }
 
         Card card = new Card();
-        card.setUserId(user.getId());
+        card.setUserId(userId);
+        card.setUsername(user.getNickname());
         card.setContent(content);
         card.setImageUrl(imageUrl);
         card.setIsAnonymous(isAnonymous);
         card.setLikesCount(0);
         save(card);
 
-        // 设置关联信息用于返回给前端
-        card.setUser(user);
+        // 发布卡片奖励 10 经验值
+        userService.addExp(userId, 10);
+
+        // 设置附加信息用于返回给前端
         card.setCommentCount(0); // 新卡片评论数为 0
+        card.setIsOwner(true);
         return card;
     }
 
@@ -178,7 +184,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      * @param excludeIds 需要尽量排除的卡片ID列表
      * @return 随机排序的卡片列表（已填充用户信息和评论数量）
      */
-    public Map<String, Object> randomCards(int limit, List<Long> excludeIds) {
+    public Map<String, Object> randomCards(int limit, List<Long> excludeIds, Long viewerId) {
         List<Long> normalizedExcludeIds = excludeIds == null ? Collections.emptyList() : excludeIds.stream()
                 .filter(id -> id != null)
                 .distinct()
@@ -193,6 +199,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
             cards.addAll(fallbackCards);
         }
         fillCardExtraInfo(cards);
+        applyViewerVisibility(cards, viewerId);
 
         Map<String, Object> result = new java.util.HashMap<>();
         result.put("cards", cards);
@@ -208,13 +215,14 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
      * @param size   每页条数
      * @return 分页结果
      */
-    public IPage<Card> listByUserId(Long userId, int page, int size) {
+    public IPage<Card> listByUserId(Long userId, int page, int size, Long viewerId) {
         Page<Card> p = new Page<>(page, size);
         IPage<Card> cards = lambdaQuery()
                 .eq(Card::getUserId, userId)
                 .orderByDesc(Card::getCreatedAt)
                 .page(p);
         fillCardExtraInfo(cards.getRecords());
+        applyViewerVisibility(cards.getRecords(), viewerId);
         return cards;
     }
 
@@ -292,7 +300,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
     /**
      * 分页查询用户追的卡片列表
      */
-    public IPage<Card> listFollowedCards(Long userId, int page, int size) {
+    public IPage<Card> listFollowedCards(Long userId, int page, int size, Long viewerId) {
         // 先查追的 card_id 列表
         List<CardFollow> follows = cardFollowMapper.selectList(
                 new QueryWrapper<CardFollow>()
@@ -331,6 +339,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         cards.sort((a, b) -> orderMap.getOrDefault(a.getId(), 0) - orderMap.getOrDefault(b.getId(), 0));
 
         fillCardExtraInfo(cards);
+        applyViewerVisibility(cards, viewerId);
 
         Page<Card> result = new Page<>(page, size);
         result.setRecords(cards);

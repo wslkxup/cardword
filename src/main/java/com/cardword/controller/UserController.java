@@ -2,20 +2,17 @@ package com.cardword.controller;
 
 import com.cardword.entity.User;
 import com.cardword.mapper.UserMapper;
+import com.cardword.service.UserService;
+import com.cardword.util.PasswordUtil;
+import com.cardword.util.SessionUtil;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 用户控制器
- * 提供用户注册和登录接口
- * 所有接口路径以 /api/users 为前缀
- */
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
@@ -23,68 +20,119 @@ public class UserController {
     @Autowired
     private UserMapper userMapper;
 
-    /**
-     * 用户注册接口
-     * 校验规则：
-     *   1. 用户名不能为空（会自动 trim 去除首尾空格）
-     *   2. 密码不能为空
-     *   3. 用户名不能与已有用户重复
-     *
-     * @param body 请求体，包含 nickname 和 pwd 字段
-     * @return 成功返回 {"userId": id}，失败返回 {"error": "错误信息"}
-     */
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private SessionUtil sessionUtil;
+
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody Map<String, Object> body) {
-        // 提取并清理用户名（去除首尾空格）
         String nickname = body.get("nickname") != null ? ((String) body.get("nickname")).trim() : "";
         String pwd = body.get("pwd") != null ? (String) body.get("pwd") : "";
 
-        // 校验：用户名不能为空
         if (nickname.isEmpty()) {
             return Collections.singletonMap("error", "用户名不能为空");
         }
-        // 校验：密码不能为空
         if (pwd.isEmpty()) {
             return Collections.singletonMap("error", "密码不能为空");
         }
 
-        // 校验：检查用户名是否已被注册
         User existing = userMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<User>()
                 .eq("nickname", nickname));
         if (existing != null) {
             return Collections.singletonMap("error", "用户名已存在");
         }
 
-        // 创建用户并入库
         User user = new User();
         user.setNickname(nickname);
-        user.setPwd(pwd);
+        user.setPwd(PasswordUtil.encrypt(pwd));
         userMapper.insert(user);
 
-        return Collections.singletonMap("userId", user.getId());
+        String token = sessionUtil.createSession(user.getId());
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", token);
+        result.put("userId", user.getId());
+        return result;
     }
 
-    /**
-     * 用户登录接口
-     * 根据用户名和密码查询匹配的用户记录
-     *
-     * @param body 请求体，包含 nickname 和 pwd 字段
-     * @return 成功返回 {"userId": id}，失败返回 {"error": "用户名或密码错误"}
-     */
     @PostMapping("/login")
     public Map<String, Object> login(@RequestBody Map<String, Object> body) {
         String nickname = (String) body.get("nickname");
         String pwd = (String) body.get("pwd");
 
         User user = userMapper.selectOne(new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<User>()
-                .eq("nickname", nickname)
-                .eq("pwd", pwd)
-        );
+                .eq("nickname", nickname));
 
-        if (user != null) {
-            return Collections.singletonMap("userId", user.getId());
-        } else {
+        if (user == null || !PasswordUtil.verify(pwd, user.getPwd())) {
             return Collections.singletonMap("error", "用户名或密码错误");
         }
+
+        String token = sessionUtil.createSession(user.getId());
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", token);
+        result.put("userId", user.getId());
+        return result;
+    }
+
+    @PostMapping("/logout")
+    public Map<String, Object> logout(HttpServletRequest request) {
+        sessionUtil.deleteSession(request);
+        return Collections.singletonMap("success", true);
+    }
+
+    @PostMapping("/changePassword")
+    public Map<String, Object> changePassword(@RequestBody Map<String, Object> body, HttpServletRequest request) {
+        Long userId = sessionUtil.getUserId(request);
+        if (userId == null) {
+            return Collections.singletonMap("error", "用户未登录");
+        }
+
+        String oldPwd = body.get("oldPwd") != null ? (String) body.get("oldPwd") : "";
+        String newPwd = body.get("newPwd") != null ? (String) body.get("newPwd") : "";
+
+        if (oldPwd.isEmpty() || newPwd.isEmpty()) {
+            return Collections.singletonMap("error", "密码不能为空");
+        }
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            return Collections.singletonMap("error", "用户不存在");
+        }
+
+        if (!PasswordUtil.verify(oldPwd, user.getPwd())) {
+            return Collections.singletonMap("error", "旧密码不正确");
+        }
+
+        user.setPwd(PasswordUtil.encrypt(newPwd));
+        userMapper.updateById(user);
+
+        return Collections.singletonMap("success", true);
+    }
+
+    @GetMapping("/info")
+    public Map<String, Object> getUserInfo(HttpServletRequest request) {
+        Long userId = sessionUtil.getUserId(request);
+        if (userId == null) {
+            return Collections.singletonMap("error", "用户未登录");
+        }
+
+        User user = userService.getUserInfo(userId);
+        if (user == null) {
+            return Collections.singletonMap("error", "用户不存在");
+        }
+
+        int level = user.getLevel() != null ? user.getLevel() : 0;
+        int exp = user.getExp() != null ? user.getExp() : 0;
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", user.getId());
+        result.put("nickname", user.getNickname());
+        result.put("exp", exp);
+        result.put("level", level);
+        result.put("currentLevelExp", userService.getCurrentLevelExp(exp, level));
+        result.put("nextLevelExp", userService.getNextLevelExp(level));
+        result.put("expNeeded", userService.getExpNeeded(exp, level));
+        return result;
     }
 }

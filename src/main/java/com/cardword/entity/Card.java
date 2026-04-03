@@ -14,6 +14,7 @@ public class Card {
     @TableId(type = IdType.AUTO)
     private Long id;
     private Long userId;
+    private String username;
     private String content;
     private String imageUrl;
     private Integer isAnonymous;
@@ -34,4 +35,11 @@ public class Card {
      */
     @TableField(exist = false)
     private Integer commentCount;
+
+    /**
+     * 当前查看者是否为卡片作者（非数据库字段）
+     * 用于前端安全判断当前用户是否可以删除等操作
+     */
+    @TableField(exist = false)
+    private Boolean isOwner;
 }

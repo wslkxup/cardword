@@ -88,17 +88,21 @@ public class FileUploadService {
         }
     }
 
-    /**
-     * 压缩并保存图片
-     */
     private void compressAndSaveImage(MultipartFile file, Path filePath) throws IOException {
-        // 读取原始图片
-        BufferedImage originalImage = ImageIO.read(file.getInputStream());
+        // 先将上传文件写入目标路径，确保 MultipartFile 的临时文件流被完全关闭
+        try (java.io.InputStream in = file.getInputStream();) {
+            Files.copy(in, filePath, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        }
+
+        // 再从目标文件读取进行压缩，避免直接持有 MultipartFile 的底层临时文件句柄
+        BufferedImage originalImage;
+        try (java.io.InputStream in = Files.newInputStream(filePath)) {
+            originalImage = ImageIO.read(in);
+        }
         if (originalImage == null) {
             throw new IOException("无效的图片文件");
         }
 
-        // 计算压缩尺寸
         int width = originalImage.getWidth();
         int height = originalImage.getHeight();
 
@@ -108,7 +112,6 @@ public class FileUploadService {
             height = (int) (height * ratio);
         }
 
-        // 缩放图片
         BufferedImage resizedImage = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);
         Graphics2D g2d = resizedImage.createGraphics();
         g2d.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
@@ -117,7 +120,7 @@ public class FileUploadService {
         g2d.drawImage(originalImage, 0, 0, width, height, null);
         g2d.dispose();
 
-        // 保存为 JPEG 格式
+        // 覆盖写回 JPEG 文件
         File outputFile = filePath.toFile();
         ImageIO.write(resizedImage, "jpg", outputFile);
     }
