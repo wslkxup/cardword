@@ -20,7 +20,7 @@
           <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片</template>
           <template v-else>{{ card.username || '' }}</template>
         </span>
-        <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
+        <span v-if="card.isAnonymous === 1" class="anonymous-badge">匿名卡片</span>
       </div>
       <button v-if="isOwner && allowDelete" class="btn-delete" @click.stop="showConfirm = true">删除</button>
     </div>
@@ -59,6 +59,25 @@
       />
     </Transition>
 
+    <!-- 图片预览弹窗 -->
+    <Teleport to="body">
+      <Transition name="confirm">
+        <div v-if="previewOpen" class="image-preview-overlay" @click.self="closePreview">
+          <div class="image-preview-inner" role="dialog" aria-modal="true" aria-label="图片预览">
+            <img
+              class="image-preview-img"
+              :src="previewUrl"
+              alt="预览图片"
+              @load="previewLoading = false"
+              @error="previewLoading = false"
+            />
+            <div v-if="previewLoading" class="image-preview-loading">加载中...</div>
+            <button class="image-preview-close" type="button" @click="closePreview" aria-label="关闭图片预览">×</button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- 卡片详情弹窗 -->
     <Teleport to="body">
       <Transition name="confirm">
@@ -77,10 +96,10 @@
               </div>
               <div class="detail-info">
                 <span class="detail-nickname">
-                  <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片作者</template>
+                  <template v-if="card.isAnonymous === 1 && !isOwner">匿名卡片</template>
                   <template v-else>{{ card.username || '' }}</template>
                 </span>
-                <span v-if="card.isAnonymous === 1 && isOwner" class="anonymous-badge">匿名卡片</span>
+                <span v-if="card.isAnonymous === 1" class="anonymous-badge">匿名卡片</span>
                 <span class="detail-time">{{ formatFullTime(card.createdAt) }}</span>
               </div>
             </div>
@@ -158,6 +177,10 @@ const showConfirm = ref(false)
 const showDetail = ref(false)
 const deleting = ref(false)
 const cardRef = ref(null)
+
+const previewOpen = ref(false)
+const previewUrl = ref('')
+const previewLoading = ref(false)
 
 watch(() => props.initialFollowed, (val) => {
   followed.value = val
@@ -238,8 +261,33 @@ watch(showComments, (val) => {
   }
 })
 
+function onKeydown(e) {
+  if (e.key === 'Escape') {
+    if (previewOpen.value) closePreview()
+    else if (showDetail.value) showDetail.value = false
+    else if (showConfirm.value) showConfirm.value = false
+  }
+}
+
+defineOptions({
+  inheritAttrs: false
+})
+
+watch([previewOpen, showDetail, showConfirm], ([p, d, c]) => {
+  const anyOpen = p || d || c
+  if (anyOpen) {
+    document.addEventListener('keydown', onKeydown)
+    document.body.style.overflow = 'hidden'
+  } else {
+    document.removeEventListener('keydown', onKeydown)
+    document.body.style.overflow = ''
+  }
+})
+
 onUnmounted(() => {
   document.removeEventListener('click', onClickOutside)
+  document.removeEventListener('keydown', onKeydown)
+  document.body.style.overflow = ''
 })
 
 async function handleLike() {
@@ -312,93 +360,56 @@ function formatFullTime(dt) {
 
 // ========== 图片预览 ==========
 function previewImage(url) {
-  // 创建全屏图片预览
-  const overlay = document.createElement('div')
-  overlay.className = 'image-preview-overlay'
-  overlay.innerHTML = `
-    <div class="image-preview-inner" @click.self="closePreview()">
-      <img src="${url}" />
-      <button class="image-preview-close" @click="closePreview()">×</button>
-    </div>
-  `
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.9);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-    cursor: zoom-out;
-  `
-  
-  const inner = overlay.querySelector('.image-preview-inner')
-  inner.style.cssText = `
-    position: relative;
-    max-width: 90%;
-    max-height: 90%;
-  `
-  
-  const img = overlay.querySelector('img')
-  img.style.cssText = `
-    max-width: 100%;
-    max-height: 90vh;
-    object-fit: contain;
-    cursor: zoom-out;
-  `
-  
-  const closeBtn = overlay.querySelector('.image-preview-close')
-  closeBtn.style.cssText = `
-    position: absolute;
-    top: -40px;
-    right: 0;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.2);
-    color: #fff;
-    border: none;
-    font-size: 24px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  `
-  
-  function closePreview() {
-    overlay.remove()
-  }
-  
-  closeBtn.onclick = closePreview
-  overlay.onclick = closePreview
-  
-  document.body.appendChild(overlay)
+  previewUrl.value = url || ''
+  previewLoading.value = true
+  previewOpen.value = true
+}
+
+function closePreview() {
+  previewOpen.value = false
+  previewUrl.value = ''
+  previewLoading.value = false
 }
 </script>
 
 <style scoped>
 .card-item {
   background: linear-gradient(145deg, var(--color-bg-card) 0%, var(--color-bg-card-end) 100%);
-  border-radius: 16px;
-  padding: 24px;
-  padding-top: 27px;
+  border-radius: 18px;
+  padding: 20px 20px 22px;
+  padding-top: 24px;
   position: relative;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(255, 255, 255, 0.9);
   box-shadow:
-    0 1px 2px rgba(0, 0, 0, 0.04),
-    0 4px 12px rgba(0, 0, 0, 0.06),
-    0 12px 24px rgba(0, 0, 0, 0.03);
-  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1),
-              box-shadow 0.3s ease;
+    0 8px 20px rgba(108, 92, 231, 0.08),
+    0 2px 8px rgba(0, 0, 0, 0.02);
+  transition:
+    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
   overflow: hidden;
   break-inside: avoid;
   margin-bottom: 20px;
   animation: cardEnter 0.5s ease backwards;
   will-change: transform;
   cursor: pointer;
+}
+
+.card-accent {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 999px 999px 0 0;
+}
+
+.card-item:hover {
+  transform: translateY(-4px);
+  box-shadow:
+    0 14px 30px rgba(108, 92, 231, 0.14),
+    0 4px 12px rgba(0, 0, 0, 0.04);
+  border-color: rgba(108, 92, 231, 0.35);
 }
 
 
@@ -693,6 +704,70 @@ function previewImage(url) {
   font-weight: 500;
 }
 
+
+/* ========== 图片预览弹窗 ========== */
+.image-preview-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.86);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2200;
+  padding: 20px;
+  cursor: zoom-out;
+}
+
+.image-preview-inner {
+  position: relative;
+  max-width: min(92vw, 920px);
+  max-height: 90vh;
+  cursor: default;
+}
+
+.image-preview-img {
+  max-width: 100%;
+  max-height: 90vh;
+  display: block;
+  border-radius: 12px;
+  object-fit: contain;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.4);
+}
+
+.image-preview-loading {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  letter-spacing: 2px;
+  pointer-events: none;
+}
+
+.image-preview-close {
+  position: absolute;
+  top: -44px;
+  right: 0;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+
 /* ========== 评论展开过渡动画 ========== */
 .comment-slide-enter-active,
 .comment-slide-leave-active {
@@ -713,4 +788,5 @@ function previewImage(url) {
   max-height: 1000px;
   transform: translateY(0);
 }
+
 </style>

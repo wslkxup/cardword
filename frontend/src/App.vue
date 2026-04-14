@@ -28,13 +28,38 @@
         @click="activeTab === 'all' ? shuffle() : switchTab('all')"
         :title="activeTab === 'all' ? '换一批' : '卡片世界'"
       >
-        <svg v-if="activeTab !== 'all'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-        <svg v-else :class="['windmill-icon', { spinning: shuffling }]" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <path d="M12 12 C12 12, 8 2, 12 2 C16 2, 12 12, 12 12Z" opacity="0.9"/>
-          <path d="M12 12 C12 12, 22 8, 22 12 C22 16, 12 12, 12 12Z" opacity="0.7"/>
-          <path d="M12 12 C12 12, 16 22, 12 22 C8 22, 12 12, 12 12Z" opacity="0.9"/>
-          <path d="M12 12 C12 12, 2 16, 2 12 C2 8, 12 12, 12 12Z" opacity="0.7"/>
-          <circle cx="12" cy="12" r="2" fill="currentColor"/>
+        <svg
+          v-if="activeTab !== 'all'"
+          class="grid-icon"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <rect x="3" y="3" width="7" height="7" rx="2"/>
+          <rect x="14" y="3" width="7" height="7" rx="2"/>
+          <rect x="3" y="14" width="7" height="7" rx="2"/>
+          <rect x="14" y="14" width="7" height="7" rx="2"/>
+        </svg>
+        <svg
+          v-else
+          :class="['refresh-icon', { spinning: shuffling }]"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        >
+          <g class="refresh-icon-inner">
+            <!-- 半圆箭头刷新图标 -->
+            <path d="M4 10a7 7 0 0 1 11.5-5.2"/>
+            <polyline points="16 3 16 8 11 8"/>
+            <path d="M20 14a7 7 0 0 1-11.5 5.2"/>
+            <polyline points="8 21 8 16 13 16"/>
+          </g>
         </svg>
       </button>
       <button
@@ -521,8 +546,8 @@ async function loadMyCards() {
   loading.value = true
   page.value = 1
   const res = await getMyCards(page.value, 10)
-  cards.value = res.data.records
-  hasMore.value = page.value < res.data.pages
+  cards.value = res.records
+  hasMore.value = page.value < res.pages
   // 加载收藏状态
   try {
     const followedIds = await getFollowedCardIds()
@@ -555,10 +580,18 @@ function shuffle() {
   if (refreshingAll.value) return
   refreshingAll.value = true
   shuffling.value = true
+  const startedAt = Date.now()
+
   loadCards()
     .finally(() => {
-      shuffling.value = false
-      refreshingAll.value = false
+      const elapsed = Date.now() - startedAt
+      const minDuration = 700 // 确保动画至少展示一小段时间
+      const remain = Math.max(0, minDuration - elapsed)
+
+      setTimeout(() => {
+        shuffling.value = false
+        refreshingAll.value = false
+      }, remain)
     })
 }
 
@@ -566,12 +599,12 @@ async function loadMore() {
   page.value++
   if (mySubTab.value === 'followed') {
     const res = await getFollowedCards(page.value, 10)
-    cards.value = [...cards.value, ...res.data.records]
-    hasMore.value = page.value < res.data.pages
+    cards.value = [...cards.value, ...res.records]
+    hasMore.value = page.value < res.pages
   } else {
     const res = await getMyCards(page.value, 10)
-    cards.value = [...cards.value, ...res.data.records]
-    hasMore.value = page.value < res.data.pages
+    cards.value = [...cards.value, ...res.records]
+    hasMore.value = page.value < res.pages
   }
 }
 
@@ -724,10 +757,18 @@ function formatTime(timeStr) {
 }
 
 function logout() {
+  // 调用后端注销接口，删除服务端 session
+  apiLogout().catch(() => {
+    // 忽略网络错误，前端照常清理本地状态
+  })
+
+  // 清除本地登录状态和 token
   userId.value = null
   userNickname.value = ''
   localStorage.removeItem('cardword_user_id')
   localStorage.removeItem('cardword_nickname')
+  localStorage.removeItem('cardword_token')
+
   showChangePassword.value = false
   resetChangePasswordForm()
   showToast('已退出登录', 'info')
@@ -765,11 +806,11 @@ async function loadFollowedCards() {
   }
   loading.value = true
   page.value = 1
-  const res = await getFollowedCards(userId.value, page.value, 10)
-  cards.value = res.data.records
-  hasMore.value = page.value < res.data.pages
+  const res = await getFollowedCards(page.value, 10)
+  cards.value = res.records
+  hasMore.value = page.value < res.pages
   // 标记所有为已追
-  followedSet.value = new Set(res.data.records.map(c => c.id))
+  followedSet.value = new Set(res.records.map(c => c.id))
   loading.value = false
 }
 
@@ -796,53 +837,53 @@ onUnmounted(() => {
 <style>
 /* ========== CSS 变量主题系统 ========== */
 :root {
-  --color-bg: #f0f2f5;
+  --color-bg: #f5f5fb;
   --color-bg-card: #ffffff;
-  --color-bg-card-end: #fafbfc;
-  --color-text: #333333;
+  --color-bg-card-end: #faf7ff;
+  --color-text: #222222;
   --color-text-secondary: #666666;
   --color-text-muted: #aaaaaa;
   --color-text-content: #2c3e50;
-  --color-accent: #4361ee;
-  --color-accent-hover: #3a56d4;
-  --color-accent-light: #eef0ff;
-  --color-danger: #ff4757;
-  --color-danger-light: #fff0f0;
-  --color-like: #e74c3c;
-  --color-border: #f0f0f0;
-  --color-border-strong: #e0e0e0;
-  --color-input-border: #dddddd;
+  --color-accent: #6c5ce7;
+  --color-accent-hover: #5b4bd6;
+  --color-accent-light: #efe9ff;
+  --color-danger: #ff6b81;
+  --color-danger-light: #ffe8ec;
+  --color-like: #ff4757;
+  --color-border: #f1edf8;
+  --color-border-strong: #ded7f0;
+  --color-input-border: #d6d0ea;
   --color-nav-bg: #ffffff;
-  --color-modal-backdrop: rgba(0, 0, 0, 0.25);
-  --color-modal-bg: rgba(255, 255, 255, 0.88);
-  --color-skeleton: #e9ecef;
-  --color-skeleton-shine: #f8f9fa;
-  --color-comment-bg: #f8f9fa;
+  --color-modal-backdrop: rgba(15, 12, 41, 0.25);
+  --color-modal-bg: rgba(255, 255, 255, 0.9);
+  --color-skeleton: #e7e1f7;
+  --color-skeleton-shine: #f7f3ff;
+  --color-comment-bg: #f8f5ff;
 }
 
 [data-theme="dark"] {
-  --color-bg: #0f0f1a;
-  --color-bg-card: #1a1a2e;
-  --color-bg-card-end: #16213e;
-  --color-text: #e0e0e0;
-  --color-text-secondary: #a0a0b0;
-  --color-text-muted: #666680;
-  --color-text-content: #d0d0e0;
-  --color-accent: #5a7ff0;
-  --color-accent-hover: #4a6fe0;
-  --color-accent-light: #1e2040;
-  --color-danger: #ff6b7a;
-  --color-danger-light: #2a1a1e;
-  --color-like: #ff6b6b;
-  --color-border: #2a2a4a;
-  --color-border-strong: #3a3a5a;
-  --color-input-border: #3a3a5a;
-  --color-nav-bg: #1a1a2e;
+  --color-bg: #060714;
+  --color-bg-card: #111322;
+  --color-bg-card-end: #15172a;
+  --color-text: #e6e6f0;
+  --color-text-secondary: #a5a5c5;
+  --color-text-muted: #6d6d90;
+  --color-text-content: #d7d7f5;
+  --color-accent: #8e8aff;
+  --color-accent-hover: #7b76ff;
+  --color-accent-light: #1d1f3b;
+  --color-danger: #ff7b94;
+  --color-danger-light: #2b1621;
+  --color-like: #ff7b94;
+  --color-border: #262947;
+  --color-border-strong: #33365a;
+  --color-input-border: #33365a;
+  --color-nav-bg: #111322;
   --color-modal-backdrop: rgba(0, 0, 0, 0.5);
-  --color-modal-bg: rgba(26, 26, 46, 0.88);
-  --color-skeleton: #2a2a4a;
-  --color-skeleton-shine: #3a3a5a;
-  --color-comment-bg: #16213e;
+  --color-modal-bg: rgba(17, 19, 34, 0.9);
+  --color-skeleton: #262947;
+  --color-skeleton-shine: #33365a;
+  --color-comment-bg: #15172a;
 }
 
 /* ========== 自定义滚动条 ========== */
@@ -917,12 +958,42 @@ body {
 
 /* ========== 右侧浮动导航 ========== */
 .side-nav { position: fixed; right: 20px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 12px; z-index: 100; }
-.nav-btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: var(--color-nav-bg); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.04); transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; }
+.nav-btn { width: 48px; height: 48px; border-radius: 50%; border: none; background: rgba(255, 255, 255, 0.96); color: var(--color-text-secondary); cursor: pointer; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 24px rgba(15, 12, 41, 0.12), 0 0 0 1px rgba(255, 255, 255, 0.8); transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1); position: relative; backdrop-filter: blur(10px); }
 .nav-btn svg { width: 20px; height: 20px; }
-.nav-btn:hover { transform: scale(1.12); box-shadow: 0 4px 12px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); color: var(--color-accent); }
-.nav-btn.active { background: var(--color-accent); color: #fff; box-shadow: 0 4px 12px rgba(67,97,238,0.3), 0 8px 24px rgba(67,97,238,0.15); }
-.windmill-icon.spinning { animation: windmill-spin 1s linear; }
-@keyframes windmill-spin { from { transform: rotate(0deg); } to { transform: rotate(720deg); } }
+.nav-btn:hover { transform: translateY(-2px) scale(1.04); box-shadow: 0 14px 32px rgba(15, 12, 41, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.9); color: var(--color-accent); }
+.nav-btn.active { background: var(--color-accent); color: #fff; box-shadow: 0 16px 34px rgba(108, 92, 231, 0.35); }
+/* 换一批刷新图标与动画 */
+.grid-icon {
+  transition: transform 0.18s ease;
+}
+
+.nav-btn:hover .grid-icon {
+  transform: translateY(-1px);
+}
+
+.refresh-icon {
+  transform-origin: 12px 12px;
+}
+
+.refresh-icon-inner {
+  transform-origin: 12px 12px;
+}
+
+/* 点击瞬间轻微缩放一下，反馈“已点击” */
+.nav-btn:active .refresh-icon-inner {
+  transform: scale(0.9);
+}
+
+/* 正在刷新时旋转动画，由 shuffling 控制 */
+.refresh-icon.spinning .refresh-icon-inner {
+  animation: refresh-spin 1.1s cubic-bezier(0.33, 1, 0.68, 1) infinite;
+}
+
+@keyframes refresh-spin {
+  0%   { transform: rotate(0deg)   scale(0.96); }
+  50%  { transform: rotate(300deg) scale(1.05); }
+  100% { transform: rotate(360deg) scale(1); }
+}
 .nav-btn-primary { background: var(--color-accent); color: #fff; }
 .nav-btn-primary:hover { background: var(--color-accent-hover); color: #fff; box-shadow: 0 4px 12px rgba(67,97,238,0.3), 0 8px 24px rgba(67,97,238,0.15); }
 .nav-btn-danger { color: #ccc; }

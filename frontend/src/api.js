@@ -48,7 +48,7 @@ export function getRandomCards(size = 10, excludeIds = []) {
 }
 
 export function getMyCards(page = 1, size = 10) {
-  return api.get('/cards/my', { params: { page, size } })
+  return api.get('/cards/my', { params: { page, size } }).then(res => res.data)
 }
 
 export function publishCard(content, nickname, imageUrl = null, isAnonymous = 0) {
@@ -76,7 +76,7 @@ export function followCard(cardId) {
 }
 
 export function getFollowedCards(page = 1, size = 10) {
-  return api.get('/cards/followed', { params: { page, size } })
+  return api.get('/cards/followed', { params: { page, size } }).then(res => res.data)
 }
 
 export function getFollowedCardIds() {

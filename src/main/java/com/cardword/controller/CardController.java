@@ -66,7 +66,14 @@ public class CardController {
 
         String content = contentObj != null ? contentObj.toString() : null;
         String nickname = nicknameObj != null ? nicknameObj.toString() : null;
-        String imageUrl = imageUrlObj != null ? imageUrlObj.toString() : null;
+
+        String imageUrl = null;
+        if (imageUrlObj != null) {
+            String raw = imageUrlObj.toString().trim();
+            if (!raw.isEmpty() && !"null".equalsIgnoreCase(raw)) {
+                imageUrl = raw;
+            }
+        }
 
         Integer isAnonymous = body.get("isAnonymous") != null
                 ? Integer.valueOf(body.get("isAnonymous").toString())
@@ -109,7 +116,11 @@ public class CardController {
     }
 
     @PostMapping("/upload")
-    public Map<String, Object> uploadImage(@RequestParam("file") MultipartFile file) {
+    public Map<String, Object> uploadImage(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
+        Long userId = sessionUtil.getUserId(request);
+        if (userId == null) {
+            return Collections.singletonMap("error", "请先登录");
+        }
         try {
             String url = fileUploadService.uploadImage(file);
             return Collections.singletonMap("url", url);
