@@ -20,12 +20,15 @@ public class FeedbackController {
     @Autowired
     private SessionUtil sessionUtil;
 
+    private Long getCurrentUserId(HttpServletRequest request) {
+        Object attr = request.getAttribute("currentUserId");
+        if (attr instanceof Long) return (Long) attr;
+        return sessionUtil.getUserId(request);
+    }
+
     @PostMapping
     public Map<String, Object> submit(@RequestBody Map<String, Object> body, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录后再提交反馈");
-        }
+        Long userId = getCurrentUserId(request);
 
         String title = (String) body.get("title");
         String content = (String) body.get("content");

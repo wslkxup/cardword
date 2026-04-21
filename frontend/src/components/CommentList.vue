@@ -79,7 +79,6 @@ async function submit() {
   try {
     const parentId = replyTo.value ? replyTo.value.id : null
     const res = await addComment(props.cardId, content.value.trim(), '', parentId)
-    // 新评论的 replyToUserId 可能指向已存在的评论，需要确保能正确显示
     comments.value.push(res)
     content.value = ''
     replyTo.value = null
@@ -89,6 +88,10 @@ async function submit() {
     await nextTick()
     const list = commentListRef.value
     if (list) list.scrollTop = list.scrollHeight
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      console.error('评论失败', err)
+    }
   } finally {
     sending.value = false
   }
@@ -150,10 +153,13 @@ onMounted(loadComments)
 
 .comment-bubble {
   flex: 1;
-  background: var(--color-comment-bg);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   border-radius: 12px;
   padding: 8px 12px;
   min-width: 0;
+  border: 1px solid rgba(108, 92, 231, 0.12);
 }
 
 .comment-bubble-header {
@@ -179,8 +185,9 @@ onMounted(loadComments)
 .comment-text {
   font-size: 14px;
   color: var(--color-text);
-  line-height: 1.5;
+  line-height: 1.6;
   word-break: break-word;
+  font-family: "ZCOOL Happy", "ZCOOL XiaoWei", "LXGW WenKai Screen", "Noto Serif SC", Georgia, serif;
 }
 
 .comment-reply-tag {
@@ -248,12 +255,14 @@ onMounted(loadComments)
 
 .input-content {
   flex: 1;
-  border: 1px solid var(--color-input-border);
+  border: 1px solid rgba(108, 92, 231, 0.15);
   border-radius: 20px;
   padding: 8px 14px;
   font-size: 13px;
   outline: none;
-  background: var(--color-bg-card);
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
   color: var(--color-text);
   transition: border-color 0.2s, box-shadow 0.2s;
 }
@@ -306,5 +315,22 @@ onMounted(loadComments)
 
 .comment-pop-move {
   transition: transform 0.3s ease;
+}
+
+/* ========== 深色模式 ========== */
+[data-theme="dark"] .comment-bubble {
+  background: rgba(30, 30, 52, 0.65);
+  border: 1px solid rgba(108, 92, 231, 0.20);
+}
+
+[data-theme="dark"] .input-content {
+  background: rgba(30, 30, 52, 0.65);
+  border: 1px solid rgba(108, 92, 231, 0.20);
+  color: var(--color-text);
+}
+
+[data-theme="dark"] .input-content:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(157, 151, 255, 0.15);
 }
 </style>

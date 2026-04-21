@@ -2,6 +2,36 @@ import axios from 'axios'
 
 const apiBaseURL = import.meta.env.VITE_API_BASE_URL || '/api'
 
+const DEFAULT_MAX_UPLOAD_SIZE = 5 * 1024 * 1024
+const DEFAULT_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
+const DEFAULT_IMAGE_ACCEPT = '.jpg,.jpeg,.png,.webp'
+
+export const uploadConfig = {
+  maxSizeBytes: DEFAULT_MAX_UPLOAD_SIZE,
+  maxSizeDisplay: '5MB',
+  allowedTypes: DEFAULT_ALLOWED_TYPES,
+  accept: DEFAULT_IMAGE_ACCEPT,
+  loaded: false
+}
+
+export async function loadUploadConfig() {
+  if (uploadConfig.loaded) return uploadConfig
+  try {
+    const res = await api.get('/upload/config')
+    const data = res.data
+    if (data) {
+      uploadConfig.maxSizeBytes = data.maxSizeBytes || DEFAULT_MAX_UPLOAD_SIZE
+      uploadConfig.maxSizeDisplay = data.maxSizeDisplay || '5MB'
+      uploadConfig.allowedTypes = data.allowedTypes || DEFAULT_ALLOWED_TYPES
+      uploadConfig.accept = data.accept || DEFAULT_IMAGE_ACCEPT
+    }
+    uploadConfig.loaded = true
+  } catch {
+    uploadConfig.loaded = true
+  }
+  return uploadConfig
+}
+
 const api = axios.create({
   baseURL: apiBaseURL,
   timeout: 10000
@@ -15,6 +45,31 @@ api.interceptors.request.use(config => {
   }
   return config
 })
+
+let onSessionExpired = null
+
+export function setOnSessionExpired(callback) {
+  onSessionExpired = callback
+}
+
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response && error.response.status === 401) {
+      clearLocalAuth()
+      if (onSessionExpired) {
+        onSessionExpired()
+      }
+    }
+    return Promise.reject(error)
+  }
+)
+
+function clearLocalAuth() {
+  localStorage.removeItem('cardword_token')
+  localStorage.removeItem('cardword_user_id')
+  localStorage.removeItem('cardword_nickname')
+}
 
 export function getLocalToken() {
   return localStorage.getItem('cardword_token') || null
@@ -51,8 +106,8 @@ export function getMyCards(page = 1, size = 10) {
   return api.get('/cards/my', { params: { page, size } }).then(res => res.data)
 }
 
-export function publishCard(content, nickname, imageUrl = null, isAnonymous = 0) {
-  return api.post('/cards', { content, nickname, imageUrl, isAnonymous })
+export function publishCard(content, nickname, imageUrl = null, isAnonymous = 0, tags = []) {
+  return api.post('/cards', { content, nickname, imageUrl, isAnonymous, tags })
 }
 
 export function uploadImage(file) {
@@ -87,6 +142,20 @@ export function getFollowedCardIds() {
 
 export function getComments(cardId) {
   return api.get(`/cards/${cardId}/comments`).then(res => res.data)
+}
+
+// ==================== 标签相关接口 ====================
+
+export function searchTags(q, limit = 10) {
+  return api.get('/tags/search', { params: { q, limit } }).then(res => res.data)
+}
+
+export function getHotTags(limit = 20) {
+  return api.get('/tags/hot', { params: { limit } }).then(res => res.data)
+}
+
+export function getCardsByTag(tagId, page = 1, size = 10) {
+  return api.get('/cards/by-tag', { params: { tagId, page, size } }).then(res => res.data)
 }
 
 export function addComment(cardId, content, nickname, parentId) {

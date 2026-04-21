@@ -26,6 +26,12 @@ public class UserController {
     @Autowired
     private SessionUtil sessionUtil;
 
+    private Long getCurrentUserId(HttpServletRequest request) {
+        Object attr = request.getAttribute("currentUserId");
+        if (attr instanceof Long) return (Long) attr;
+        return sessionUtil.getUserId(request);
+    }
+
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody Map<String, Object> body) {
         String nickname = body.get("nickname") != null ? ((String) body.get("nickname")).trim() : "";
@@ -83,10 +89,7 @@ public class UserController {
 
     @PostMapping("/changePassword")
     public Map<String, Object> changePassword(@RequestBody Map<String, Object> body, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "用户未登录");
-        }
+        Long userId = getCurrentUserId(request);
 
         String oldPwd = body.get("oldPwd") != null ? (String) body.get("oldPwd") : "";
         String newPwd = body.get("newPwd") != null ? (String) body.get("newPwd") : "";
@@ -112,10 +115,7 @@ public class UserController {
 
     @GetMapping("/info")
     public Map<String, Object> getUserInfo(HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "用户未登录");
-        }
+        Long userId = getCurrentUserId(request);
 
         User user = userService.getUserInfo(userId);
         if (user == null) {

@@ -13,6 +13,54 @@
         <span class="typing-text">{{ currentPhrase }}</span>
         <span class="typing-cursor">|</span>
       </p>
+
+      <div v-if="activeTab === 'all'" class="tag-search" @click.stop>
+        <div class="tag-search-row">
+          <div class="tag-search-input-wrap">
+            <svg class="tag-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+            <input
+              class="tag-search-input"
+              type="text"
+              v-model="tagQuery"
+              placeholder="搜索标签..."
+              @input="onTagQueryInput"
+              @keydown.esc.prevent="clearTagSuggestions"
+            />
+          </div>
+          <button v-if="activeTag" class="tag-clear-btn" @click="clearTagFilter" type="button">清除</button>
+        </div>
+
+        <div v-if="tagSuggestionsOpen" class="tag-suggestions">
+          <div v-if="tagSearching" class="tag-suggestions-item muted">搜索中...</div>
+          <button
+            v-for="t in tagSuggestions"
+            :key="t.id"
+            class="tag-suggestions-item"
+            type="button"
+            @click="selectTag(t)"
+          >
+            #{{ t.name }}
+          </button>
+          <div v-if="!tagSearching && tagSuggestions.length === 0" class="tag-suggestions-item muted">无匹配标签</div>
+        </div>
+
+        <div v-if="activeTag" class="tag-active-hint">当前筛选：#{{ activeTag.name }}</div>
+
+        <div v-if="!activeTag && hotTags.length && !tagSuggestionsOpen" class="hot-tags">
+          <span class="hot-tags-label">热门标签：</span>
+          <button
+            v-for="(t, i) in hotTags"
+            :key="t.id"
+            class="hot-tag-btn"
+            type="button"
+            :style="hotTagStyle(t)"
+            @click="selectTag(t)"
+          >#{{ t.name }}</button>
+        </div>
+      </div>
     </header>
 
     <!-- 右上角公告铃铛 -->
@@ -73,7 +121,7 @@
       <button
         v-if="userId"
         class="nav-btn nav-btn-primary"
-        @click="showForm = true"
+        @click="openPublishForm"
         title="写一张卡片"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -175,9 +223,11 @@
           :index="index"
           :initial-followed="followedSet.has(card.id)"
           :allow-delete="activeTab === 'my' && mySubTab === 'cards'"
+          :remove-on-unfollow="activeTab === 'my' && mySubTab === 'followed'"
           @liked="onLiked"
           @deleted="onDeleted"
           @followed="onFollowed"
+          @tag-click="onTagClick"
         />
       </template>
 
@@ -344,7 +394,7 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, provide } from 'vue'
-import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, getLocalToken, setLocalToken, login, register, logout as apiLogout, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement, changePassword, getUserInfo } from './api.js'
+import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, getLocalToken, setLocalToken, login, register, logout as apiLogout, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement, changePassword, getUserInfo, searchTags, getCardsByTag, getHotTags, loadUploadConfig, setOnSessionExpired } from './api.js'
 import CardItem from './components/CardItem.vue'
 import CardForm from './components/CardForm.vue'
 
@@ -364,6 +414,124 @@ const mySubTab = ref('cards')
 const followedSet = ref(new Set())
 const recentCardIds = ref([])
 const refreshingAll = ref(false)
+
+// ========== 标签搜索/筛选 ==========
+const tagQuery = ref('')
+const tagSuggestions = ref([])
+const tagSearching = ref(false)
+const activeTag = ref(null)
+const tagSuggestionsOpen = ref(false)
+const hotTags = ref([])
+let tagDebounceTimer = null
+
+async function loadHotTags() {
+  try {
+    const res = await getHotTags(5)
+    hotTags.value = Array.isArray(res) ? res : []
+  } catch {
+    hotTags.value = []
+  }
+}
+
+function clearTagSuggestions() {
+  tagSuggestionsOpen.value = false
+  tagSuggestions.value = []
+}
+
+async function fetchTagSuggestions(q) {
+  const keyword = (q || '').trim()
+  if (!keyword) {
+    clearTagSuggestions()
+    return
+  }
+
+  tagSearching.value = true
+  tagSuggestionsOpen.value = true
+  try {
+    const res = await searchTags(keyword, 10)
+    tagSuggestions.value = Array.isArray(res) ? res : []
+  } catch {
+    tagSuggestions.value = []
+  } finally {
+    tagSearching.value = false
+  }
+}
+
+function onTagQueryInput() {
+  if (tagDebounceTimer) clearTimeout(tagDebounceTimer)
+  const q = tagQuery.value
+  tagDebounceTimer = setTimeout(() => fetchTagSuggestions(q), 250)
+}
+
+async function selectTag(tag) {
+  activeTag.value = tag
+  tagQuery.value = tag?.name ? `#${tag.name}` : ''
+  clearTagSuggestions()
+
+  loading.value = true
+  try {
+    const res = await getCardsByTag(tag.id, 1, 10)
+    cards.value = res?.records || []
+    hasMore.value = res ? (1 < res.pages) : false
+    if (userId.value) {
+      try {
+        const followedIds = await getFollowedCardIds()
+        followedSet.value = new Set(followedIds)
+      } catch {}
+    }
+  } finally {
+    loading.value = false
+  }
+}
+
+function clearTagFilter() {
+  activeTag.value = null
+  tagQuery.value = ''
+  clearTagSuggestions()
+  loadCards()
+}
+
+function onTagClick(tag) {
+  activeTab.value = 'all'
+  selectTag(tag)
+}
+
+function hashString(str) {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h) + str.charCodeAt(i)
+    h |= 0
+  }
+  return Math.abs(h)
+}
+
+const tagPalette = [
+  { color: '#4361ee', bg: 'rgba(67, 97, 238, 0.10)', border: 'rgba(67, 97, 238, 0.25)' },
+  { color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.10)', border: 'rgba(124, 58, 237, 0.25)' },
+  { color: '#f72585', bg: 'rgba(247, 37, 133, 0.10)', border: 'rgba(247, 37, 133, 0.25)' },
+  { color: '#118ab2', bg: 'rgba(17, 138, 178, 0.10)', border: 'rgba(17, 138, 178, 0.25)' },
+  { color: '#06d6a0', bg: 'rgba(6, 214, 160, 0.10)', border: 'rgba(6, 214, 160, 0.25)' },
+  { color: '#ef476f', bg: 'rgba(239, 71, 111, 0.10)', border: 'rgba(239, 71, 111, 0.25)' },
+  { color: '#ffd166', bg: 'rgba(255, 209, 102, 0.14)', border: 'rgba(255, 209, 102, 0.35)' },
+]
+
+function getTagPaletteItem(tag) {
+  const rawId = tag && tag.id != null ? Number(tag.id) : null
+  const idx = Number.isFinite(rawId)
+    ? (Math.abs(rawId) % tagPalette.length)
+    : (hashString(String(tag?.name || '')) % tagPalette.length)
+
+  return tagPalette[idx]
+}
+
+function hotTagStyle(tag) {
+  const p = getTagPaletteItem(tag)
+  return {
+    color: p.color,
+    background: p.bg,
+    border: `1px solid ${p.border}`
+  }
+}
 
 const loginForm = ref({ nickname: '', pwd: '' })
 const registerForm = ref({ nickname: '', pwd: '', confirmPwd: '' })
@@ -424,7 +592,7 @@ function showToast(message, type = 'info') {
 provide('showToast', showToast)
 
 // ========== 打字机效果 ==========
-const phrases = ['说出你的心声，让世界倾听', '想法无界限，言语无限可能', '用文字表达真实的自己', '分享你的生活趣事，激发共鸣', '让每个人的故事都有舞台']
+const phrases = ['一张卡片，一段心事', '说出你的心声，让世界倾听', '想法无界限，言语无限可能', '分享你的生活趣事，激发共鸣', '让每个人的故事都有舞台']
 const currentPhrase = ref('')
 let phraseIdx = 0
 let charIdx = 0
@@ -544,18 +712,26 @@ async function loadMyCards() {
     return
   }
   loading.value = true
-  page.value = 1
-  const res = await getMyCards(page.value, 10)
-  cards.value = res.records
-  hasMore.value = page.value < res.pages
-  // 加载收藏状态
   try {
-    const followedIds = await getFollowedCardIds()
-    followedSet.value = new Set(followedIds)
+    page.value = 1
+    const res = await getMyCards(page.value, 10)
+    cards.value = res.records
+    hasMore.value = page.value < res.pages
+    try {
+      const followedIds = await getFollowedCardIds()
+      followedSet.value = new Set(followedIds)
+    } catch (err) {
+      console.error('加载收藏状态失败', err)
+    }
   } catch (err) {
-    console.error('加载收藏状态失败', err)
+    if (err?.response?.status !== 401) {
+      console.error('加载我的卡片失败', err)
+    }
+    cards.value = []
+    hasMore.value = false
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 }
 
 function switchTab(tab) {
@@ -582,7 +758,11 @@ function shuffle() {
   shuffling.value = true
   const startedAt = Date.now()
 
-  loadCards()
+  const p = (activeTab.value === 'all' && activeTag.value)
+    ? selectTag(activeTag.value)
+    : loadCards()
+
+  Promise.resolve(p)
     .finally(() => {
       const elapsed = Date.now() - startedAt
       const minDuration = 700 // 确保动画至少展示一小段时间
@@ -596,15 +776,22 @@ function shuffle() {
 }
 
 async function loadMore() {
-  page.value++
-  if (mySubTab.value === 'followed') {
-    const res = await getFollowedCards(page.value, 10)
-    cards.value = [...cards.value, ...res.records]
-    hasMore.value = page.value < res.pages
-  } else {
-    const res = await getMyCards(page.value, 10)
-    cards.value = [...cards.value, ...res.records]
-    hasMore.value = page.value < res.pages
+  try {
+    page.value++
+    if (mySubTab.value === 'followed') {
+      const res = await getFollowedCards(page.value, 10)
+      cards.value = [...cards.value, ...res.records]
+      hasMore.value = page.value < res.pages
+    } else {
+      const res = await getMyCards(page.value, 10)
+      cards.value = [...cards.value, ...res.records]
+      hasMore.value = page.value < res.pages
+    }
+  } catch (err) {
+    page.value--
+    if (err?.response?.status !== 401) {
+      showToast('加载失败，请重试', 'error')
+    }
   }
 }
 
@@ -618,7 +805,12 @@ async function onPublished(card) {
     setLocalUserId(card.user.id)
   }
   if (activeTab.value === 'my') {
-    loadMyCards()
+    if (mySubTab.value === 'followed') {
+      mySubTab.value = 'cards'
+      await loadMyCards()
+    } else {
+      await loadMyCards()
+    }
   } else {
     cards.value.unshift(card)
   }
@@ -628,20 +820,24 @@ async function onPublished(card) {
 }
 
 async function handleLogin() {
-  const res = await login(loginForm.value.nickname, loginForm.value.pwd)
-  if (res.token) {
-    setLocalToken(res.token)
-    setLocalUserId(res.userId)
-    userId.value = res.userId
-    userNickname.value = loginForm.value.nickname
-    localStorage.setItem('cardword_nickname', loginForm.value.nickname)
-    // 清空密码
-    loginForm.value.pwd = ''
-    showLogin.value = false
-    showToast(`${loginForm.value.nickname}，欢迎回来！`, 'success')
-    setTimeout(() => window.location.reload(), 500)
-  } else {
-    showToast(res.error || '登录失败', 'error')
+  try {
+    const res = await login(loginForm.value.nickname, loginForm.value.pwd)
+    if (res.token) {
+      setLocalToken(res.token)
+      setLocalUserId(res.userId)
+      userId.value = res.userId
+      userNickname.value = loginForm.value.nickname
+      localStorage.setItem('cardword_nickname', loginForm.value.nickname)
+      // 清空密码
+      loginForm.value.pwd = ''
+      showLogin.value = false
+      showToast(`${loginForm.value.nickname}，欢迎回来！`, 'success')
+      setTimeout(() => window.location.reload(), 500)
+    } else {
+      showToast(res.error || '登录失败', 'error')
+    }
+  } catch (err) {
+    showToast(err?.response?.data?.error || err?.message || '网络异常，请稍后重试', 'error')
   }
 }
 
@@ -659,6 +855,16 @@ async function loadUserInfo() {
     }
   } catch (err) {
     console.error('加载用户信息失败:', err)
+  }
+}
+
+async function openPublishForm() {
+  try {
+    await getUserInfo()
+    showForm.value = true
+  } catch (err) {
+    if (err?.response?.status === 401) return
+    showForm.value = true
   }
 }
 
@@ -682,29 +888,31 @@ const registerPwdError = ref('')
 async function handleRegister() {
   registerError.value = ''
   registerPwdError.value = ''
-  
+
   // 检查两次密码是否一致
   if (registerForm.value.pwd !== registerForm.value.confirmPwd) {
     registerPwdError.value = '两次输入的密码不一致'
     return
   }
-  
-  const res = await register(registerForm.value.nickname, registerForm.value.pwd)
-  if (res.userId) {
-    userId.value = res.userId
-    setLocalUserId(res.userId)
-    userNickname.value = registerForm.value.nickname
-    localStorage.setItem('cardword_nickname', registerForm.value.nickname)
-    // 清空密码
-    registerForm.value.pwd = ''
-    registerForm.value.confirmPwd = ''
-    showRegister.value = false
-    showToast('注册成功！', 'success')
-    setTimeout(() => window.location.reload(), 500)
-  } else if (res.error === '用户名已存在') {
-    registerError.value = '用户名已存在，请换一个试试'
-  } else {
-    showToast(res.error || '注册失败', 'error')
+
+  try {
+    const res = await register(registerForm.value.nickname, registerForm.value.pwd)
+    if (res.userId) {
+      // 清空密码
+      registerForm.value.pwd = ''
+      registerForm.value.confirmPwd = ''
+      showRegister.value = false
+      loginForm.value.nickname = registerForm.value.nickname
+      loginForm.value.pwd = ''
+      showLogin.value = true
+      showToast('注册成功，请登录', 'success')
+    } else if (res.error === '用户名已存在') {
+      registerError.value = '用户名已存在，请换一个试试'
+    } else {
+      showToast(res.error || '注册失败', 'error')
+    }
+  } catch (err) {
+    showToast(err?.response?.data?.error || err?.message || '网络异常，请稍后重试', 'error')
   }
 }
 
@@ -721,8 +929,10 @@ async function handleFeedback() {
     } else {
       showToast(res.error || '提交失败', 'error')
     }
-  } catch {
-    showToast('网络异常，请稍后重试', 'error')
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      showToast('网络异常，请稍后重试', 'error')
+    }
   } finally {
     feedbackSubmitting.value = false
   }
@@ -786,14 +996,12 @@ function onDeleted(cardId) {
 }
 
 function onFollowed(cardId, isFollowed) {
+  followedSet.value = new Set(followedSet.value)
+
   if (isFollowed) {
     followedSet.value.add(cardId)
   } else {
     followedSet.value.delete(cardId)
-    // 如果在"我追的"标签页取消追，从列表移除
-    if (activeTab.value === 'my' && mySubTab.value === 'followed') {
-      cards.value = cards.value.filter(c => c.id !== cardId)
-    }
   }
 }
 
@@ -805,16 +1013,35 @@ async function loadFollowedCards() {
     return
   }
   loading.value = true
-  page.value = 1
-  const res = await getFollowedCards(page.value, 10)
-  cards.value = res.records
-  hasMore.value = page.value < res.pages
-  // 标记所有为已追
-  followedSet.value = new Set(res.records.map(c => c.id))
-  loading.value = false
+  try {
+    page.value = 1
+    const res = await getFollowedCards(page.value, 10)
+    cards.value = res.records
+    hasMore.value = page.value < res.pages
+    followedSet.value = new Set(res.records.map(c => c.id))
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      console.error('加载追更卡片失败', err)
+    }
+    cards.value = []
+    hasMore.value = false
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(() => {
+  setOnSessionExpired(() => {
+    userId.value = null
+    userNickname.value = ''
+    showForm.value = false
+    showChangePassword.value = false
+    showToast('登录已过期，请重新登录', 'warning')
+    setTimeout(() => {
+      showLogin.value = true
+    }, 800)
+  })
+
   const storedRecent = localStorage.getItem('cardword_recent_card_ids')
   if (storedRecent) {
     try {
@@ -824,6 +1051,8 @@ onMounted(() => {
     }
   }
   loadCards()
+  loadHotTags()
+  loadUploadConfig()
   typeStep()
   checkNewAnnouncement()
   loadUserInfo()
@@ -862,28 +1091,32 @@ onUnmounted(() => {
 }
 
 [data-theme="dark"] {
-  --color-bg: #060714;
-  --color-bg-card: #111322;
-  --color-bg-card-end: #15172a;
-  --color-text: #e6e6f0;
-  --color-text-secondary: #a5a5c5;
-  --color-text-muted: #6d6d90;
-  --color-text-content: #d7d7f5;
-  --color-accent: #8e8aff;
-  --color-accent-hover: #7b76ff;
-  --color-accent-light: #1d1f3b;
+  --color-bg: #0e0e1c;
+  --color-bg-card: #181828;
+  --color-bg-card-end: #1e1e32;
+  --color-text: #dcdcf0;
+  --color-text-secondary: #9898b8;
+  --color-text-muted: #5a5a7a;
+  --color-text-content: #c8c8e8;
+  --color-accent: #9d97ff;
+  --color-accent-hover: #8a84ff;
+  --color-accent-light: #1f1f3a;
   --color-danger: #ff7b94;
   --color-danger-light: #2b1621;
   --color-like: #ff7b94;
-  --color-border: #262947;
-  --color-border-strong: #33365a;
-  --color-input-border: #33365a;
-  --color-nav-bg: #111322;
-  --color-modal-backdrop: rgba(0, 0, 0, 0.5);
-  --color-modal-bg: rgba(17, 19, 34, 0.9);
-  --color-skeleton: #262947;
-  --color-skeleton-shine: #33365a;
-  --color-comment-bg: #15172a;
+  --color-border: #2a2a45;
+  --color-border-strong: #383860;
+  --color-input-border: #383860;
+  --color-nav-bg: #141422;
+  --color-modal-backdrop: rgba(0, 0, 0, 0.6);
+  --color-modal-bg: rgba(24, 24, 40, 0.92);
+  --color-skeleton: #26264a;
+  --color-skeleton-shine: #32325a;
+  --color-comment-bg: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] body {
+  background: linear-gradient(135deg, #0e0e1c 0%, #0a0a18 50%, #110818 100%);
 }
 
 /* ========== 自定义滚动条 ========== */
@@ -897,7 +1130,7 @@ onUnmounted(() => {
 
 body {
   font-family: 'LXGW WenKai Screen', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: var(--color-bg);
+  background: linear-gradient(135deg, #f0edf8 0%, #f5f5fb 40%, #fdf2f5 70%, #f5f5fb 100%);
   color: var(--color-text);
   transition: background 0.4s ease, color 0.4s ease;
 }
@@ -913,7 +1146,7 @@ body {
 
 /* ========== 动态背景 ========== */
 .bg-decoration { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
-.bg-circle { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.15; transition: opacity 0.5s ease; }
+.bg-circle { position: absolute; border-radius: 50%; filter: blur(80px); opacity: 0.40; transition: opacity 0.5s ease; }
 [data-theme="dark"] .bg-circle { opacity: 0.07; }
 .bg-circle-1 { width: 500px; height: 500px; background: #4361ee; top: -150px; right: -100px; animation: bgFloat1 25s ease-in-out infinite; }
 .bg-circle-2 { width: 400px; height: 400px; background: #7c3aed; bottom: -100px; left: -100px; animation: bgFloat2 20s ease-in-out infinite; }
@@ -924,6 +1157,185 @@ body {
 
 /* ========== 标题 ========== */
 .header { text-align: center; margin-bottom: 32px; position: relative; z-index: 1; }
+
+/* ========== 标签搜索框（胶囊风） ========== */
+.tag-search {
+  margin-top: 18px;
+  display: inline-block;
+  width: min(520px, 92vw);
+  text-align: left;
+}
+.tag-search-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.tag-search-input-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--color-input-border);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 10px 26px rgba(15, 12, 41, 0.08);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+[data-theme="dark"] .tag-search-input-wrap {
+  background: rgba(17, 19, 34, 0.72);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
+}
+.tag-search-input-wrap:focus-within {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 4px rgba(108, 92, 231, 0.14), 0 12px 30px rgba(15, 12, 41, 0.10);
+  transform: translateY(-1px);
+}
+.tag-search-icon {
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+.tag-search-input {
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--color-text);
+  font-size: 14px;
+  padding: 0;
+}
+.tag-search-input::placeholder {
+  color: var(--color-text-muted);
+}
+.tag-clear-btn {
+  border: 1.5px solid var(--color-border-strong);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--color-text-secondary);
+  padding: 10px 14px;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 10px 26px rgba(15, 12, 41, 0.06);
+}
+[data-theme="dark"] .tag-clear-btn {
+  background: rgba(17, 19, 34, 0.72);
+}
+.tag-clear-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  transform: translateY(-1px);
+}
+.tag-suggestions {
+  margin-top: 10px;
+  border-radius: 16px;
+  border: 1px solid var(--color-border);
+  background: var(--color-bg-card);
+  box-shadow: 0 18px 48px rgba(15, 12, 41, 0.12);
+  overflow: hidden;
+}
+.tag-suggestions-item {
+  width: 100%;
+  text-align: left;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 14px;
+}
+.tag-suggestions-item:hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+.tag-suggestions-item.muted {
+  cursor: default;
+  color: var(--color-text-muted);
+}
+.tag-active-hint {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--color-text-muted);
+  padding-left: 6px;
+}
+.hot-tags-wrap {
+  margin-top: 12px;
+  margin-left: 2px;
+  padding: 12px 13px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(124, 58, 237, 0.18);
+  background:
+    radial-gradient(120% 110% at 0% 0%, rgba(99, 102, 241, 0.20) 0%, rgba(99, 102, 241, 0) 55%),
+    radial-gradient(120% 110% at 100% 100%, rgba(244, 114, 182, 0.20) 0%, rgba(244, 114, 182, 0) 58%),
+    linear-gradient(138deg, rgba(255, 255, 255, 0.78) 0%, rgba(248, 250, 255, 0.86) 48%, rgba(255, 245, 250, 0.72) 100%);
+  box-shadow: 0 10px 26px rgba(99, 102, 241, 0.10);
+}
+[data-theme="dark"] .hot-tags-wrap {
+  border-color: rgba(168, 85, 247, 0.24);
+  background:
+    radial-gradient(120% 110% at 0% 0%, rgba(99, 102, 241, 0.26) 0%, rgba(99, 102, 241, 0) 58%),
+    radial-gradient(120% 110% at 100% 100%, rgba(236, 72, 153, 0.22) 0%, rgba(236, 72, 153, 0) 60%),
+    linear-gradient(140deg, rgba(26, 27, 49, 0.92) 0%, rgba(22, 20, 40, 0.90) 100%);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+}
+.hot-tags-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 11px;
+}
+.hot-tags-label {
+  font-family: 'Pacifico', 'LXGW WenKai Screen', cursive;
+  font-size: 15px;
+  font-weight: 400;
+  color: var(--color-accent);
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+.hot-tags-desc {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.hot-tags {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 12px;
+  max-height: 32px;
+  overflow: hidden;
+}
+.hot-tag-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  background: var(--tag-bg, rgba(107, 114, 128, 0.16));
+  color: var(--tag-color, #4b5563);
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  white-space: nowrap;
+  user-select: none;
+}
+.hot-tag-btn:hover {
+  transform: scale(1.06);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.hot-tag-btn:active {
+  transform: translateY(0);
+}
 .header h1 {
   font-family: 'Pacifico', cursive;
   font-size: 42px;
@@ -995,9 +1407,9 @@ body {
   100% { transform: rotate(360deg) scale(1); }
 }
 .nav-btn-primary { background: var(--color-accent); color: #fff; }
-.nav-btn-primary:hover { background: var(--color-accent-hover); color: #fff; box-shadow: 0 4px 12px rgba(67,97,238,0.3), 0 8px 24px rgba(67,97,238,0.15); }
+.nav-btn-primary:hover { background: var(--color-accent-hover); color: #fff; box-shadow: 0 4px 12px rgba(212,165,116,0.3), 0 8px 24px rgba(212,165,116,0.15); }
 .nav-btn-danger { color: #ccc; }
-.nav-btn-danger:hover { background: var(--color-danger); color: #fff; box-shadow: 0 4px 12px rgba(255,71,87,0.3), 0 8px 24px rgba(255,71,87,0.15); }
+.nav-btn-danger:hover { background: var(--color-danger); color: #fff; box-shadow: 0 4px 12px rgba(224,122,106,0.3), 0 8px 24px rgba(224,122,106,0.15); }
 .nav-divider { width: 24px; height: 1px; background: var(--color-border-strong); margin: 2px 0; }
 .nav-btn::after { content: attr(title); position: absolute; right: 58px; top: 50%; transform: translateY(-50%); background: #333; color: #fff; padding: 4px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity 0.2s ease; }
 .nav-btn:hover::after { opacity: 1; }
@@ -1157,7 +1569,7 @@ body {
 }
 
 .toast-success { border-left-color: #06d6a0; }
-.toast-error { border-left-color: #ff4757; }
+.toast-error { border-left-color: #ff6b81; }
 .toast-warning { border-left-color: #ffd166; }
 .toast-info { border-left-color: #4361ee; }
 
@@ -1175,7 +1587,7 @@ body {
 }
 
 .toast-success .toast-icon { background: #06d6a0; }
-.toast-error .toast-icon { background: #ff4757; }
+.toast-error .toast-icon { background: #ff6b81; }
 .toast-warning .toast-icon { background: #ffd166; color: #333; }
 .toast-info .toast-icon { background: #4361ee; }
 
@@ -1344,14 +1756,15 @@ body {
 .detail-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 1500;
   padding: 20px;
+  overflow-y: auto;
 }
 
 .detail-box {
@@ -1363,10 +1776,11 @@ body {
   padding: 28px;
   width: 100%;
   max-width: 520px;
-  max-height: 80vh;
+  max-height: 85vh;
   overflow-y: auto;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
   position: relative;
+  margin: auto;
 }
 
 .detail-close {
@@ -1513,7 +1927,7 @@ body {
 }
 
 .level-badge {
-  background: linear-gradient(135deg, #4361ee, #7c3aed);
+  background: linear-gradient(135deg, #6c5ce7, #a29bfe);
   color: #fff;
   padding: 3px 10px;
   border-radius: 12px;
@@ -1533,7 +1947,7 @@ body {
 
 .exp-progress {
   height: 100%;
-  background: linear-gradient(90deg, #4361ee, #7c3aed);
+  background: linear-gradient(90deg, #6c5ce7, #a29bfe);
   border-radius: 4px;
   transition: width 0.3s ease;
   min-width: 2px;
@@ -1548,30 +1962,34 @@ body {
 }
 
 .theme-toggle-btn {
-  margin-left: auto;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
+  margin-left: 12px;
+  padding: 6px 14px;
+  border-radius: 20px;
   border: 1.5px solid var(--color-border);
-  background: var(--color-card-bg);
-  color: var(--color-text-secondary);
+  background: var(--color-bg-card);
+  color: var(--color-accent);
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.25s ease;
   flex-shrink: 0;
+  gap: 6px;
+  font-size: 13px;
 }
 
 .theme-toggle-btn svg {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .theme-toggle-btn:hover {
   background: var(--color-accent);
   color: #fff;
   border-color: var(--color-accent);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(108, 92, 231, 0.25);
 }
 
 

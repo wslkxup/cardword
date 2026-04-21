@@ -8,8 +8,6 @@
     @mouseleave="handleMouseLeave"
     @click="onCardClick"
   >
-    <div class="card-accent" :style="{ background: accentGradient }"></div>
-
     <div class="card-header">
       <div class="card-author-wrap">
         <div class="card-avatar">
@@ -25,11 +23,24 @@
       <button v-if="isOwner && allowDelete" class="btn-delete" @click.stop="showConfirm = true">删除</button>
     </div>
 
+    <div class="card-divider"></div>
+
     <div class="card-content">{{ card.content }}</div>
 
     <!-- 卡片图片 -->
     <div v-if="card.imageUrl" class="card-image" @click.stop>
       <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
+    </div>
+
+    <!-- 标签 chips -->
+    <div v-if="card.tags && card.tags.length" class="tag-chips" @click.stop>
+      <span
+        v-for="t in card.tags"
+        :key="t.id || t.name"
+        class="tag-chip tag-clickable"
+        :style="tagChipStyle(t)"
+        @click.stop="$emit('tagClick', t)"
+      >#{{ t.name }}</span>
     </div>
 
     <div class="card-footer">
@@ -45,6 +56,9 @@
         <button class="btn-follow" :class="{ followed }" @click="handleFollow" :title="followed ? '取消追' : '追'">
           <span class="follow-icon" :class="{ 'follow-burst': justFollowed }">{{ followed ? '★' : '☆' }}</span>
           <span class="follow-pop" v-if="justFollowed">追！</span>
+        </button>
+        <button class="btn-share" @click="openShare" title="分享">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="share-icon"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
         </button>
       </div>
     </div>
@@ -114,6 +128,17 @@
               <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
             </div>
 
+            <!-- 标签 chips -->
+            <div v-if="card.tags && card.tags.length" class="tag-chips detail-tag-chips" @click.stop>
+              <span
+                v-for="t in card.tags"
+                :key="t.id || t.name"
+                class="tag-chip tag-clickable"
+                :style="tagChipStyle(t)"
+                @click.stop="$emit('tagClick', t)"
+              >#{{ t.name }}</span>
+            </div>
+
             <div class="detail-divider"></div>
 
             <!-- 评论列表 -->
@@ -149,6 +174,31 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- 分享弹窗 -->
+    <Teleport to="body">
+      <Transition name="confirm">
+        <div v-if="showShare" class="share-overlay" @click.self="showShare = false">
+          <div class="share-box">
+            <button class="share-close" @click="showShare = false">×</button>
+            <div class="share-heading">
+              <p class="share-eyebrow">Card Word Share</p>
+              <h3 class="share-title">分享卡片</h3>
+              <p class="share-subtitle">分享图生成成功，请长按（右键）复制，或者点击下方按钮下载分享~~</p>
+            </div>
+            <div class="share-preview">
+              <img v-if="shareImage" :src="shareImage" alt="分享图片" />
+              <div v-else class="share-generating">生成中...</div>
+            </div>
+            <div class="share-actions">
+              <button class="share-btn share-download" :disabled="!shareImage" @click="downloadShareImage">
+                下载图片
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -157,15 +207,49 @@ import { ref, computed, watch, inject, nextTick, onUnmounted } from 'vue'
 import { likeCard, deleteCard, followCard } from '../api.js'
 import CommentList from './CommentList.vue'
 
+function hashString(str) {
+  let h = 0
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) - h) + str.charCodeAt(i)
+    h |= 0
+  }
+  return Math.abs(h)
+}
+
+function tagChipStyle(tag) {
+  const palette = [
+    { color: '#4361ee', bg: 'rgba(67, 97, 238, 0.10)', border: 'rgba(67, 97, 238, 0.25)' },
+    { color: '#7c3aed', bg: 'rgba(124, 58, 237, 0.10)', border: 'rgba(124, 58, 237, 0.25)' },
+    { color: '#f72585', bg: 'rgba(247, 37, 133, 0.10)', border: 'rgba(247, 37, 133, 0.25)' },
+    { color: '#118ab2', bg: 'rgba(17, 138, 178, 0.10)', border: 'rgba(17, 138, 178, 0.25)' },
+    { color: '#06d6a0', bg: 'rgba(6, 214, 160, 0.10)', border: 'rgba(6, 214, 160, 0.25)' },
+    { color: '#ef476f', bg: 'rgba(239, 71, 111, 0.10)', border: 'rgba(239, 71, 111, 0.25)' },
+    { color: '#ffd166', bg: 'rgba(255, 209, 102, 0.14)', border: 'rgba(255, 209, 102, 0.35)' },
+  ]
+
+  const rawId = tag && tag.id != null ? Number(tag.id) : null
+  const idx = Number.isFinite(rawId)
+    ? (Math.abs(rawId) % palette.length)
+    : (hashString(String(tag?.name || '')) % palette.length)
+
+  const p = palette[idx]
+  return {
+    color: p.color,
+    background: p.bg,
+    border: `1px solid ${p.border}`
+  }
+}
+
 const props = defineProps({
   card: Object,
   userId: Number,
   index: { type: Number, default: 0 },
   initialFollowed: { type: Boolean, default: false },
-  allowDelete: { type: Boolean, default: true }
+  allowDelete: { type: Boolean, default: true },
+  removeOnUnfollow: { type: Boolean, default: false }
 })
 
-const emit = defineEmits(['liked', 'deleted', 'followed'])
+const emit = defineEmits(['liked', 'deleted', 'followed', 'tagClick'])
 const showToast = inject('showToast')
 
 const justLiked = ref(false)
@@ -181,6 +265,10 @@ const cardRef = ref(null)
 const previewOpen = ref(false)
 const previewUrl = ref('')
 const previewLoading = ref(false)
+
+const showShare = ref(false)
+const shareImage = ref(null)
+const shareCopying = ref(false)
 
 watch(() => props.initialFollowed, (val) => {
   followed.value = val
@@ -264,6 +352,7 @@ watch(showComments, (val) => {
 function onKeydown(e) {
   if (e.key === 'Escape') {
     if (previewOpen.value) closePreview()
+    else if (showShare.value) showShare.value = false
     else if (showDetail.value) showDetail.value = false
     else if (showConfirm.value) showConfirm.value = false
   }
@@ -273,8 +362,8 @@ defineOptions({
   inheritAttrs: false
 })
 
-watch([previewOpen, showDetail, showConfirm], ([p, d, c]) => {
-  const anyOpen = p || d || c
+watch([previewOpen, showDetail, showConfirm, showShare], ([p, d, c, s]) => {
+  const anyOpen = p || d || c || s
   if (anyOpen) {
     document.addEventListener('keydown', onKeydown)
     document.body.style.overflow = 'hidden'
@@ -292,12 +381,18 @@ onUnmounted(() => {
 
 async function handleLike() {
   if (justLiked.value) return
-  const res = await likeCard(props.card.id)
-  justLiked.value = true
-  countAnimating.value = true
-  setTimeout(() => { justLiked.value = false }, 600)
-  setTimeout(() => { countAnimating.value = false }, 400)
-  emit('liked', props.card.id, res.data.likesCount)
+  try {
+    const res = await likeCard(props.card.id)
+    justLiked.value = true
+    countAnimating.value = true
+    setTimeout(() => { justLiked.value = false }, 600)
+    setTimeout(() => { countAnimating.value = false }, 400)
+    emit('liked', props.card.id, res.data.likesCount)
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      showToast('点赞失败', 'error')
+    }
+  }
 }
 
 async function handleFollow() {
@@ -305,26 +400,48 @@ async function handleFollow() {
     showToast('请先登录', 'warning')
     return
   }
-  const res = await followCard(props.card.id, props.userId)
-  followed.value = res.followed
-  if (followed.value) {
-    justFollowed.value = true
-    setTimeout(() => { justFollowed.value = false }, 800)
-    showToast('已追！将持续关注该卡片', 'success')
-  } else {
+  if (deleting.value) return
+
+  try {
+    const res = await followCard(props.card.id, props.userId)
+    followed.value = res.followed
+    if (followed.value) {
+      justFollowed.value = true
+      setTimeout(() => { justFollowed.value = false }, 800)
+      showToast('已追！将持续关注该卡片', 'success')
+      emit('followed', props.card.id, true)
+      return
+    }
+
     showToast('已取消追', 'info')
+    if (props.removeOnUnfollow) {
+      deleting.value = true
+      setTimeout(() => emit('followed', props.card.id, false), 500)
+      return
+    }
+
+    emit('followed', props.card.id, false)
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      showToast('操作失败', 'error')
+    }
   }
-  emit('followed', props.card.id, followed.value)
 }
 
 async function handleDelete() {
   showConfirm.value = false
-  const res = await deleteCard(props.card.id, props.userId)
-  if (res.success) {
-    deleting.value = true
-    setTimeout(() => emit('deleted', props.card.id), 500)
-  } else {
-    showToast(res.error || '删除失败', 'error')
+  try {
+    const res = await deleteCard(props.card.id, props.userId)
+    if (res.success) {
+      deleting.value = true
+      setTimeout(() => emit('deleted', props.card.id), 500)
+    } else {
+      showToast(res.error || '删除失败', 'error')
+    }
+  } catch (err) {
+    if (err?.response?.status !== 401) {
+      showToast('删除失败', 'error')
+    }
   }
 }
 
@@ -370,23 +487,356 @@ function closePreview() {
   previewUrl.value = ''
   previewLoading.value = false
 }
+
+// ========== 分享功能 ==========
+const SHARE_ACCENT = '#6c5ce7'
+const SHARE_ACCENT_LIGHT = '#efe9ff'
+const SHARE_FONT_SERIF = '"ZCOOL Happy", "ZCOOL XiaoWei", "LXGW WenKai Screen", "Noto Serif SC", Georgia, serif'
+const SHARE_FONT_SANS = '"PingFang SC", "Microsoft YaHei", sans-serif'
+
+function wrapText(ctx, text, maxWidth) {
+  const lines = []
+  let line = ''
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i]
+    if (ch === '\n') {
+      lines.push(line)
+      line = ''
+      continue
+    }
+    const test = line + ch
+    if (ctx.measureText(test).width >= maxWidth) {
+      if (line) lines.push(line)
+      line = ch
+    } else {
+      line = test
+    }
+  }
+  if (line) lines.push(line)
+  return lines
+}
+
+function fillRoundRect(ctx, x, y, w, h, r, color) {
+  ctx.save()
+  roundRect(ctx, x, y, w, h, r)
+  ctx.fillStyle = color
+  ctx.fill()
+  ctx.restore()
+}
+
+async function generateShareImage() {
+  const W = 600
+  const dpr = 2
+  const canvas = document.createElement('canvas')
+  canvas.width = W * dpr
+  const ctx = canvas.getContext('2d')
+  ctx.scale(dpr, dpr)
+
+  const bgGrad = ctx.createLinearGradient(0, 0, W, 800)
+  bgGrad.addColorStop(0, '#e0d8f0')
+  bgGrad.addColorStop(0.4, '#e8e4f4')
+  bgGrad.addColorStop(0.7, '#f0e4ec')
+  bgGrad.addColorStop(1, '#e8e4f4')
+
+  const outerMargin = 20
+  const outerX = outerMargin
+  const outerY = outerMargin
+  const outerW = W - outerMargin * 2
+  const outerH = 20
+
+  const innerMargin = 24
+  const cardX = innerMargin
+  const cardY = outerMargin + 20
+  const cardW = W - innerMargin * 2
+  const px = cardX + 22
+
+  const authorName = props.card.isAnonymous === 1 ? '匿名卡片' : (props.card.username || '匿名')
+
+  ctx.font = `22px ${SHARE_FONT_SERIF}`
+  const contentLines = wrapText(ctx, props.card.content || '', W - px * 2)
+  const lineHeight = 36
+  const contentH = contentLines.length * lineHeight
+
+  let tagH = 0
+  if (props.card.tags && props.card.tags.length) {
+    ctx.font = `13px ${SHARE_FONT_SANS}`
+    let tx = px
+    for (const t of props.card.tags.slice(0, 5)) {
+      const label = `#${t.name}`
+      const tw = ctx.measureText(label).width + 18
+      if (tx + tw > W - px) break
+      tx += tw + 6
+    }
+    tagH = 34
+  }
+
+  let imgH = 0
+  const MAX_IMG_HEIGHT = 400
+  if (props.card.imageUrl) {
+    try {
+      const img = await loadImage(props.card.imageUrl)
+      const drawW = W - px * 2
+      imgH = img.height * (drawW / img.width)
+      if (imgH > MAX_IMG_HEIGHT) {
+        imgH = MAX_IMG_HEIGHT
+      }
+    } catch {
+      imgH = 0
+    }
+  }
+
+  const authorSectionH = 80
+  const topDividerH = 1
+  const padding = 24
+  const contentBottomPadding = 20
+  const dateSectionH = 30
+  const bottomDividerH = 1
+  const footerSectionH = 40
+  const footerBottomPadding = 48
+
+  const neededH = authorSectionH + topDividerH + padding + contentH + (imgH > 0 ? imgH + 24 : 0) + (tagH > 0 ? tagH + 24 : 0) + dateSectionH + bottomDividerH + footerSectionH + contentBottomPadding + footerBottomPadding
+  const cardH = neededH
+  const H = cardY + cardH + outerMargin + 20
+
+  canvas.height = H * dpr
+  ctx.scale(dpr, dpr)
+
+  ctx.fillStyle = bgGrad
+  ctx.fillRect(0, 0, W, H)
+
+  ctx.save()
+  roundRect(ctx, outerX, outerY, outerW, outerH + cardH + outerMargin, 20)
+  ctx.clip()
+  ctx.fillStyle = bgGrad
+  ctx.fillRect(outerX, outerY, outerW, outerH + cardH + outerMargin)
+  ctx.restore()
+
+  ctx.save()
+  roundRect(ctx, cardX, cardY, cardW, cardH, 20)
+  ctx.clip()
+  const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH)
+  cardGrad.addColorStop(0, 'rgba(255, 255, 255, 0.62)')
+  cardGrad.addColorStop(1, 'rgba(255, 255, 255, 0.38)')
+  ctx.fillStyle = cardGrad
+  ctx.fillRect(cardX, cardY, cardW, cardH)
+  ctx.restore()
+
+  let y = cardY + 16
+
+  fillRoundRect(ctx, px, y + 10, 44, 44, 22, 'rgba(108, 92, 231, 0.15)')
+  ctx.fillStyle = '#6c5ce7'
+  ctx.font = `bold 22px ${SHARE_FONT_SANS}`
+  ctx.textAlign = 'center'
+  ctx.fillText(authorName[0], px + 22, y + 38)
+  ctx.textAlign = 'left'
+
+  ctx.fillStyle = '#2D2A26'
+  ctx.font = `bold 18px ${SHARE_FONT_SANS}`
+  ctx.fillText(authorName, px + 56, y + 28)
+
+  ctx.fillStyle = '#aaa5a0'
+  ctx.font = `12px ${SHARE_FONT_SANS}`
+  ctx.fillText('Card Word', px + 56, y + 46)
+
+  y += authorSectionH
+
+  ctx.strokeStyle = 'rgba(108, 92, 231, 0.15)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(px, y)
+  ctx.lineTo(W - px, y)
+  ctx.stroke()
+
+  y += padding
+
+  ctx.fillStyle = '#2c3e50'
+  ctx.font = `22px ${SHARE_FONT_SERIF}`
+  for (const line of contentLines) {
+    ctx.fillText(line, px, y)
+    y += lineHeight
+  }
+
+  if (props.card.imageUrl && imgH > 0) {
+    try {
+      const img = await loadImage(props.card.imageUrl)
+      const drawW = W - px * 2
+      const drawH = imgH
+      fillRoundRect(ctx, px, y, drawW, drawH, 12, '#e8e2f5')
+      ctx.save()
+      roundRect(ctx, px, y, drawW, drawH, 12)
+      ctx.clip()
+      const scale = drawW / img.width
+      const scaledImgH = img.height * scale
+      if (scaledImgH > drawH) {
+        const srcY = (scaledImgH - drawH) / 2 / scale
+        const srcH = drawH / scale
+        ctx.drawImage(img, 0, srcY, img.width, srcH, px, y, drawW, drawH)
+      } else {
+        const offsetY = y + (drawH - scaledImgH) / 2
+        ctx.drawImage(img, px, offsetY, drawW, scaledImgH)
+      }
+      ctx.restore()
+      y += drawH + 24
+    } catch {
+    }
+  }
+
+  if (props.card.tags && props.card.tags.length) {
+    ctx.font = `13px ${SHARE_FONT_SANS}`
+    let tx = px
+    for (const t of props.card.tags.slice(0, 5)) {
+      const style = tagChipStyle(t)
+      const label = `#${t.name}`
+      const tw = ctx.measureText(label).width + 18
+      if (tx + tw > W - px) break
+      fillRoundRect(ctx, tx, y, tw, 24, 12, style.background)
+      ctx.fillStyle = style.color
+      ctx.fillText(label, tx + 9, y + 16)
+      tx += tw + 6
+    }
+    y += tagH + 24
+  }
+
+  const cardTime = formatTime(props.card.createdAt)
+  if (cardTime) {
+    ctx.fillStyle = '#b8b4b0'
+    ctx.font = `14px ${SHARE_FONT_SANS}`
+    ctx.fillText(cardTime, px, y + 18)
+    y += dateSectionH
+  }
+
+  y += 12
+
+  ctx.strokeStyle = 'rgba(108, 92, 231, 0.15)'
+  ctx.lineWidth = 1
+  ctx.beginPath()
+  ctx.moveTo(px, y)
+  ctx.lineTo(W - px, y)
+  ctx.stroke()
+
+  y += 28
+
+  ctx.fillStyle = '#6c5ce7'
+  ctx.font = `bold 14px ${SHARE_FONT_SANS}`
+  ctx.fillText('Card Word', px, y + 16)
+
+  ctx.fillStyle = '#aaa5a0'
+  ctx.font = `12px ${SHARE_FONT_SANS}`
+  ctx.fillText('一张卡片，一段心事', px + 80, y + 16)
+
+  ctx.textAlign = 'right'
+  ctx.fillStyle = '#c8c4c0'
+  ctx.font = `11px ${SHARE_FONT_SANS}`
+  ctx.fillText('www.cardword.online', W - px, y + 16)
+  ctx.textAlign = 'left'
+
+  return canvas.toDataURL('image/png')
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath()
+  ctx.moveTo(x + r, y)
+  ctx.lineTo(x + w - r, y)
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r)
+  ctx.lineTo(x + w, y + h - r)
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h)
+  ctx.lineTo(x + r, y + h)
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r)
+  ctx.lineTo(x, y + r)
+  ctx.quadraticCurveTo(x, y, x + r, y)
+  ctx.closePath()
+}
+
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => resolve(img)
+    img.onerror = reject
+    img.src = src
+  })
+}
+
+async function openShare() {
+  showShare.value = true
+  shareImage.value = null
+  try {
+    shareImage.value = await generateShareImage()
+  } catch (err) {
+    console.error('生成分享图片失败', err)
+    showToast(err?.message ? `生成分享图片失败：${err.message}` : '生成分享图片失败', 'error')
+  }
+}
+
+async function copyShareImage() {
+  if (!shareImage.value) return
+  try {
+    const img = new Image()
+    img.src = shareImage.value
+    await new Promise((resolve, reject) => {
+      img.onload = resolve
+      img.onerror = reject
+    })
+    const canvas = document.createElement('canvas')
+    canvas.width = img.width
+    canvas.height = img.height
+    const ctx = canvas.getContext('2d')
+    ctx.drawImage(img, 0, 0)
+    canvas.toBlob(async (blob) => {
+      if (!blob) {
+        showToast('复制失败，请尝试保存图片', 'error')
+        return
+      }
+      try {
+        await navigator.clipboard.write([
+          new ClipboardItem({ [blob.type]: blob })
+        ])
+        showToast('图片已复制到剪贴板', 'success')
+      } catch (e) {
+        console.error('剪贴板写入失败:', e)
+        showToast('复制失败，请尝试保存图片', 'error')
+      }
+    }, 'image/png')
+  } catch (err) {
+    console.error('复制失败:', err)
+    showToast('复制失败，请尝试保存图片', 'error')
+  }
+}
+
+function downloadShareImage() {
+  if (!shareImage.value) return
+  try {
+    const a = document.createElement('a')
+    a.href = shareImage.value
+    a.download = `cardword-${props.card.id}.png`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    showToast('图片下载成功', 'success')
+  } catch (err) {
+    console.error('下载失败:', err)
+    showToast('下载失败，请重试', 'error')
+  }
+}
 </script>
 
 <style scoped>
 .card-item {
-  background: linear-gradient(145deg, var(--color-bg-card) 0%, var(--color-bg-card-end) 100%);
-  border-radius: 18px;
-  padding: 20px 20px 22px;
-  padding-top: 24px;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.20) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 22px 22px 20px;
   position: relative;
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(108, 92, 231, 0.18);
   box-shadow:
-    0 8px 20px rgba(108, 92, 231, 0.08),
-    0 2px 8px rgba(0, 0, 0, 0.02);
+    0 8px 32px rgba(108, 92, 231, 0.10),
+    0 2px 8px rgba(0, 0, 0, 0.04);
   transition:
-    transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1),
-    box-shadow 0.25s ease,
-    border-color 0.25s ease;
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.28s ease,
+    border-color 0.25s ease,
+    background 0.28s ease;
   overflow: hidden;
   break-inside: avoid;
   margin-bottom: 20px;
@@ -395,23 +845,13 @@ function closePreview() {
   cursor: pointer;
 }
 
-.card-accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  border-radius: 999px 999px 0 0;
-}
-
 .card-item:hover {
-  transform: translateY(-4px);
+  transform: translateY(-6px) scale(1.01);
   box-shadow:
-    0 14px 30px rgba(108, 92, 231, 0.14),
-    0 4px 12px rgba(0, 0, 0, 0.04);
-  border-color: rgba(108, 92, 231, 0.35);
+    0 20px 40px rgba(108, 92, 231, 0.18),
+    0 8px 16px rgba(0, 0, 0, 0.06);
+  border-color: rgba(108, 92, 231, 0.40);
 }
-
 
 @keyframes cardEnter {
   from {
@@ -422,21 +862,6 @@ function closePreview() {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.card-accent {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-}
-
-.card-item:hover {
-  box-shadow:
-    0 4px 8px rgba(0, 0, 0, 0.06),
-    0 12px 28px rgba(67, 97, 238, 0.1),
-    0 20px 40px rgba(0, 0, 0, 0.06);
 }
 
 .card-header {
@@ -468,16 +893,18 @@ function closePreview() {
 
 .card-author {
   font-size: 15px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-accent);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  text-shadow: 0 1px 8px rgba(108, 92, 231, 0.15);
 }
 
 .detail-nickname {
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--color-accent);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.8px;
+  text-shadow: 0 1px 8px rgba(108, 92, 231, 0.15);
 }
 
 .btn-delete {
@@ -496,12 +923,62 @@ function closePreview() {
   color: #fff;
 }
 
+.card-divider {
+  height: 1px;
+  background: rgba(108, 92, 231, 0.15);
+  margin: 12px 0;
+}
+
 .card-content {
-  font-size: 16px;
-  line-height: 1.8;
-  margin-bottom: 16px;
+  font-size: 15.5px;
+  line-height: 1.9;
+  margin-bottom: 10px;
   word-break: break-word;
   color: var(--color-text-content);
+  font-family: "ZCOOL Happy", "ZCOOL XiaoWei", "LXGW WenKai Screen", "Noto Serif SC", Georgia, serif;
+  letter-spacing: 0.4px;
+}
+
+.detail-content {
+  font-size: 16.5px;
+  line-height: 1.9;
+  word-break: break-word;
+  color: var(--color-text-content);
+  font-family: "ZCOOL Happy", "ZCOOL XiaoWei", "LXGW WenKai Screen", "Noto Serif SC", Georgia, serif;
+  letter-spacing: 0.4px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.detail-tag-chips {
+  margin-top: 10px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  line-height: 1;
+  user-select: none;
+  letter-spacing: 0.3px;
+  font-weight: 500;
+}
+
+.tag-clickable {
+  cursor: pointer;
+  transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.15s;
+}
+
+.tag-clickable:hover {
+  transform: scale(1.08);
+  box-shadow: 0 2px 10px rgba(108, 92, 231, 0.18);
 }
 
 .card-image {
@@ -541,32 +1018,43 @@ function closePreview() {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 13px;
+  font-size: 11.5px;
   color: var(--color-text-muted);
-  padding-top: 14px;
-  border-top: 1px solid var(--color-border);
+  padding-top: 10px;
+  margin-top: 4px;
+  border-top: 1px solid rgba(108, 92, 231, 0.15);
+}
+
+.card-time {
+  font-size: 11.5px;
+  letter-spacing: 0.4px;
+  color: var(--color-text-muted);
 }
 
 .card-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
 }
 
 .btn-like, .btn-comment, .btn-follow {
   background: none;
   border: none;
   cursor: pointer;
-  font-size: 13px;
+  font-size: 11.5px;
   color: var(--color-text-secondary);
-  padding: 5px 10px;
-  border-radius: 20px;
-  transition: all 0.2s ease;
+  padding: 3px 10px;
+  border-radius: 999px;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
 }
 
 .btn-like:hover, .btn-comment:hover, .btn-follow:hover {
-  background: var(--color-accent-light);
+  background: rgba(108, 92, 231, 0.10);
   color: var(--color-accent);
+  transform: scale(1.06);
 }
 
 .btn-like {
@@ -574,7 +1062,7 @@ function closePreview() {
 }
 
 .btn-like:hover {
-  background: var(--color-danger-light);
+  background: rgba(239, 71, 111, 0.10);
   color: var(--color-like);
 }
 
@@ -782,11 +1270,212 @@ function closePreview() {
   transform: translateY(-10px);
 }
 
+/* ========== 深色模式卡片 ========== */
+[data-theme="dark"] .card-item {
+  background: linear-gradient(160deg, rgba(30, 30, 52, 0.55) 0%, rgba(24, 24, 40, 0.40) 100%);
+  border: 1px solid rgba(108, 92, 231, 0.22);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.35),
+    0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+[data-theme="dark"] .card-divider {
+  background: rgba(108, 92, 231, 0.18);
+}
+
+[data-theme="dark"] :deep(.comment-bubble) {
+  background: rgba(30, 30, 52, 0.65);
+  border: 1px solid rgba(108, 92, 231, 0.20);
+}
+
+[data-theme="dark"] :deep(.input-content) {
+  background: rgba(30, 30, 52, 0.65);
+  border: 1px solid rgba(108, 92, 231, 0.20);
+  color: var(--color-text);
+}
+
 .comment-slide-enter-to,
 .comment-slide-leave-from {
   opacity: 1;
   max-height: 1000px;
   transform: translateY(0);
+}
+
+/* ========== 分享按钮 ========== */
+.btn-share {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  padding: 5px 10px;
+  border-radius: 20px;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.btn-share:hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.share-icon {
+  width: 16px;
+  height: 16px;
+  display: inline-block;
+  vertical-align: -2px;
+}
+
+/* ========== 分享弹窗 ========== */
+.share-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--color-modal-backdrop);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2100;
+  padding: 20px;
+}
+
+.share-box {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.95), rgba(250, 250, 255, 0.92));
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 24px;
+  padding: 30px;
+  width: 90%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  position: relative;
+}
+
+.share-heading {
+  margin-bottom: 18px;
+}
+
+.share-eyebrow {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.share-close {
+  position: absolute;
+  top: 14px;
+  right: 16px;
+  background: rgba(148, 163, 184, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 22px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1;
+  padding: 6px;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.share-close:hover {
+  color: var(--color-text);
+  background: rgba(108, 92, 231, 0.12);
+  border-color: rgba(108, 92, 231, 0.2);
+}
+
+.share-title {
+  font-size: 22px;
+  color: var(--color-text);
+  margin-bottom: 8px;
+}
+
+.share-subtitle {
+  margin: 0;
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.7;
+}
+
+.share-preview {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(244, 247, 255, 0.92));
+  border-radius: 18px;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  overflow: hidden;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  padding: 10px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+.share-preview img {
+  width: 100%;
+  display: block;
+  border-radius: 16px;
+  box-shadow: 0 14px 30px rgba(100, 116, 139, 0.16);
+}
+
+.share-generating {
+  padding: 48px 24px;
+  color: var(--color-text-muted);
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.share-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.share-btn {
+  flex: 1;
+  border: none;
+  border-radius: 14px;
+  padding: 13px 0;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.share-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.share-copy {
+  background: linear-gradient(135deg, var(--color-accent), var(--color-accent-hover));
+  color: #fff;
+  box-shadow: 0 12px 24px rgba(108, 92, 231, 0.22);
+}
+
+.share-copy:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 16px 28px rgba(108, 92, 231, 0.28);
+}
+
+.share-download {
+  background: rgba(108, 92, 231, 0.08);
+  color: var(--color-accent);
+  border: 1px solid rgba(108, 92, 231, 0.16);
+}
+
+.share-download:hover:not(:disabled) {
+  background: rgba(108, 92, 231, 0.14);
+  transform: translateY(-1px);
 }
 
 </style>

@@ -8,31 +8,64 @@
         placeholder="勇敢说出你的心声..."
         rows="4"
       ></textarea>
-      
+
+      <!-- 标签输入 -->
+      <div class="tag-input-wrap">
+        <input
+          class="tag-input"
+          v-model="tagInput"
+          maxlength="200"
+          placeholder="添加标签（按回车添加，最多 5 个）"
+          @keydown.enter.prevent="addTagsFromInput"
+          @input="onTagInputChange"
+          @blur="onTagBlur"
+          @focus="onTagFocus"
+        />
+        <div v-if="tagSuggestionsOpen && tagSuggestions.length" class="tag-suggestions">
+          <button
+            v-for="s in tagSuggestions"
+            :key="s.id"
+            type="button"
+            class="tag-suggestions-item"
+            @mousedown.prevent="applySuggestion(s)"
+          >
+            #{{ s.name }}
+            <span v-if="s.useCount" class="tag-suggestions-count">{{ s.useCount }}</span>
+          </button>
+        </div>
+      </div>
+      <div v-if="tags.length" class="tag-chips">
+        <span v-for="t in tags" :key="t" class="tag-chip">
+          #{{ t }}
+          <button type="button" class="tag-remove" @click="removeTag(t)">×</button>
+        </span>
+      </div>
+      <div class="tag-hint">单个标签最长 12 字符</div>
+
       <!-- 图片预览 -->
       <div v-if="imageUrl" class="image-preview">
         <img :src="imageUrl" alt="预览图片" />
         <button class="remove-image-btn" @click="removeImage" title="删除图片">×</button>
       </div>
-      
+
       <div class="form-meta">
         <span class="char-count">{{ content.length }}/200</span>
       </div>
-      
+
       <!-- 图片上传按钮 -->
       <div class="image-actions">
         <label class="btn-upload" v-if="!imageUrl">
-          <input 
-            type="file" 
-            accept="image/*" 
-            @change="onFileChange" 
-            hidden 
+          <input
+            type="file"
+            :accept="uploadConfig.accept"
+            @change="onFileChange"
+            hidden
           />
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           <span>添加图片</span>
         </label>
       </div>
-      
+
       <!-- 匿名卡片选项 -->
       <div class="anonymous-toggle">
         <label class="switch-label">
@@ -44,18 +77,23 @@
         </label>
         <span class="anonymous-hint">发布后显示为"匿名卡片"，但本人可见</span>
       </div>
-      
+
       <div class="form-actions">
         <button class="btn-cancel" @click="$emit('close')">取消</button>
-        <button class="btn-submit" :disabled="!content.trim() && !imageUrl" @click="submit">写好了，发出去</button>
+        <button class="btn-submit" :disabled="(!content.trim() && !imageUrl) || uploading" @click="submit">写好了，发出去</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { publishCard, getLocalUserId, uploadImage } from '../api.js'
+import { ref, computed } from 'vue'
+import {
+  uploadConfig,
+  publishCard,
+  uploadImage,
+  searchTags
+} from '../api.js'
 
 const emit = defineEmits(['close', 'published'])
 
@@ -64,24 +102,109 @@ const imageUrl = ref(null)
 const isAnonymous = ref(false)
 const uploading = ref(false)
 
+const tagInput = ref('')
+const tags = ref([])
+const tagSuggestions = ref([])
+const tagSuggestionsOpen = ref(false)
+let tagDebounceTimer = null
+
+function onTagInputChange() {
+  const q = tagInput.value.trim()
+  if (tagDebounceTimer) clearTimeout(tagDebounceTimer)
+  if (!q) {
+    tagSuggestions.value = []
+    tagSuggestionsOpen.value = false
+    return
+  }
+  tagDebounceTimer = setTimeout(async () => {
+    try {
+      const res = await searchTags(q, 6)
+      tagSuggestions.value = Array.isArray(res) ? res : []
+      tagSuggestionsOpen.value = tagSuggestions.value.length > 0
+    } catch {
+      tagSuggestions.value = []
+      tagSuggestionsOpen.value = false
+    }
+  }, 200)
+}
+
+function onTagFocus() {
+  if (tagInput.value.trim() && tagSuggestions.value.length) {
+    tagSuggestionsOpen.value = true
+  }
+}
+
+function onTagBlur() {
+  setTimeout(() => {
+    tagSuggestionsOpen.value = false
+  }, 150)
+  addTagsFromInput()
+}
+
+function applySuggestion(s) {
+  if (tags.value.length >= 5) return
+  const name = s.name.length > 12 ? s.name.slice(0, 12) : s.name
+  if (!tags.value.includes(name)) tags.value.push(name)
+  tagInput.value = ''
+  tagSuggestions.value = []
+  tagSuggestionsOpen.value = false
+}
+
+function addTagsFromInput() {
+  const value = tagInput.value.trim()
+  if (!value) return
+  if (tags.value.length >= 5) {
+    tagInput.value = ''
+    return
+  }
+
+  const v = value.length > 12 ? value.slice(0, 12) : value
+  if (!tags.value.includes(v)) tags.value.push(v)
+  tagInput.value = ''
+}
+
+function removeTag(t) {
+  tags.value = tags.value.filter(x => x !== t)
+}
+
+async function isStaticImage(file) {
+  const header = new Uint8Array(await file.slice(0, 16).arrayBuffer())
+  const headerText = String.fromCharCode(...header)
+  if (headerText.startsWith('GIF87a') || headerText.startsWith('GIF89a')) {
+    return false
+  }
+
+  try {
+    const bitmap = await createImageBitmap(file)
+    bitmap.close()
+    return true
+  } catch {
+    return false
+  }
+}
+
 async function onFileChange(e) {
   const file = e.target.files[0]
   if (!file) return
-  
-  // 验证文件大小（5MB）
-  if (file.size > 5 * 1024 * 1024) {
-    alert('图片大小不能超过 5MB')
+
+  if (file.size > uploadConfig.maxSizeBytes) {
+    alert(`图片大小不能超过 ${uploadConfig.maxSizeDisplay}`)
     e.target.value = ''
     return
   }
-  
-  // 验证文件类型
-  if (!file.type.startsWith('image/')) {
-    alert('只能上传图片文件')
+
+  if (!uploadConfig.allowedTypes.includes(file.type)) {
+    alert('只允许上传 JPG、PNG、WEBP 格式的静态图片')
     e.target.value = ''
     return
   }
-  
+
+  if (!await isStaticImage(file)) {
+    alert('不支持上传动态图片或非法图片文件')
+    e.target.value = ''
+    return
+  }
+
   uploading.value = true
   try {
     const res = await uploadImage(file)
@@ -103,15 +226,22 @@ function removeImage() {
 }
 
 async function submit() {
+  addTagsFromInput()
   if (!content.value.trim() && !imageUrl.value) return
 
-  const res = await publishCard(
-    content.value.trim(),
-    '',
-    imageUrl.value,
-    isAnonymous.value ? 1 : 0
-  )
-  emit('published', res.data)
+  try {
+    const res = await publishCard(
+      content.value.trim(),
+      '',
+      imageUrl.value,
+      isAnonymous.value ? 1 : 0,
+      tags.value
+    )
+    emit('published', res.data)
+  } catch (err) {
+    if (err?.response?.status === 401) return
+    alert('发布失败：' + (err?.response?.data?.error || err?.message || '未知错误'))
+  }
 }
 </script>
 
@@ -163,6 +293,107 @@ textarea {
 textarea:focus {
   border-color: var(--color-accent);
   box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
+.tag-input-wrap {
+  position: relative;
+  margin-top: 10px;
+}
+
+.tag-input {
+  width: 100%;
+  border: 1px solid var(--color-input-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+  outline: none;
+  font-family: inherit;
+  background: var(--color-bg-card);
+  color: var(--color-text);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.tag-input:focus {
+  border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.1);
+}
+
+.tag-suggestions {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: var(--color-modal-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  margin-top: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  z-index: 10;
+  overflow: hidden;
+}
+
+.tag-suggestions-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--color-text);
+  font-size: 14px;
+  text-align: left;
+  transition: background 0.15s;
+}
+
+.tag-suggestions-item:hover {
+  background: var(--color-accent-light);
+  color: var(--color-accent);
+}
+
+.tag-suggestions-count {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  background: rgba(107, 114, 128, 0.1);
+  padding: 1px 6px;
+  border-radius: 999px;
+}
+
+.tag-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(67, 97, 238, 0.08);
+  border: 1px solid rgba(67, 97, 238, 0.18);
+  color: var(--color-accent);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.tag-remove {
+  border: none;
+  background: transparent;
+  color: currentColor;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0;
+}
+
+.tag-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 
 .form-meta {

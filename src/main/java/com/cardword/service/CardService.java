@@ -1,18 +1,24 @@
 package com.cardword.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.cardword.entity.Card;
 import com.cardword.entity.CardFollow;
+import com.cardword.entity.CardTag;
 import com.cardword.entity.Comment;
+import com.cardword.entity.Tag;
 import com.cardword.entity.User;
 import com.cardword.mapper.CardFollowMapper;
 import com.cardword.mapper.CardMapper;
+import com.cardword.mapper.CardTagMapper;
 import com.cardword.mapper.CommentMapper;
+import com.cardword.mapper.TagMapper;
 import com.cardword.mapper.UserMapper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 
@@ -33,6 +39,12 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
 
     @Autowired
     private CardFollowMapper cardFollowMapper;
+
+    @Autowired
+    private TagMapper tagMapper;
+
+    @Autowired
+    private CardTagMapper cardTagMapper;
 
     /**
      * 分页查询所有卡片列表
@@ -100,8 +112,59 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         }
     }
 
+    private void fillTags(List<Card> cards) {
+        if (cards == null || cards.isEmpty()) return;
+
+        Set<Long> cardIds = cards.stream()
+                .map(Card::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (cardIds.isEmpty()) return;
+
+        List<CardTag> relations = cardTagMapper.selectList(
+                new QueryWrapper<CardTag>()
+                        .in("card_id", cardIds)
+                        .select("card_id", "tag_id")
+        );
+        if (relations.isEmpty()) {
+            for (Card card : cards) {
+                card.setTags(Collections.emptyList());
+            }
+            return;
+        }
+
+        Set<Long> tagIds = relations.stream()
+                .map(CardTag::getTagId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        if (tagIds.isEmpty()) {
+            for (Card card : cards) {
+                card.setTags(Collections.emptyList());
+            }
+            return;
+        }
+
+        List<Tag> tags = tagMapper.selectList(
+                new QueryWrapper<Tag>()
+                        .in("id", tagIds)
+                        .select("id", "name")
+        );
+        Map<Long, Tag> tagById = tags.stream().collect(Collectors.toMap(Tag::getId, t -> t));
+
+        Map<Long, List<Tag>> tagsByCardId = new HashMap<>();
+        for (CardTag rel : relations) {
+            Tag tag = tagById.get(rel.getTagId());
+            if (tag == null) continue;
+            tagsByCardId.computeIfAbsent(rel.getCardId(), k -> new ArrayList<>()).add(tag);
+        }
+
+        for (Card card : cards) {
+            card.setTags(tagsByCardId.getOrDefault(card.getId(), Collections.emptyList()));
+        }
+    }
+
     /**
-     * 统一填充卡片的所有额外信息（用户信息 + 评论数量）
+     * 统一填充卡片的所有额外信息（用户信息 + 评论数量 + 标签）
      * 所有查询卡片列表的方法都应调用此方法，确保返回数据的一致性
      *
      * @param cards 需要填充额外信息的卡片列表
@@ -109,6 +172,7 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
     private void fillCardExtraInfo(List<Card> cards) {
         fillUserInfo(cards);
         fillCommentCount(cards);
+        fillTags(cards);
     }
 
     private void applyViewerVisibility(List<Card> cards, Long viewerId) {
@@ -127,20 +191,14 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
     /**
      * 发布一张新卡片
      * 必须登录才能发布卡片，userId 不能为 null
-     *
-     * @param content      卡片文本内容
-     * @param nickname     用户昵称
-     * @param userId       发布者的用户 ID，不能为 null
-     * @param imageUrl     图片 URL（可选）
-     * @param isAnonymous  是否匿名卡片（0 否，1 是）
-     * @return 创建好的卡片对象（包含用户信息和初始评论数 0）
      */
-    public Card publish(String content, String nickname, Long userId, String imageUrl, Integer isAnonymous) {
+    @Transactional
+    public Card publish(String content, String nickname, Long userId, String imageUrl, Integer isAnonymous, List<String> tagNames) {
         // 必须登录才能发布
         if (userId == null) {
             throw new IllegalArgumentException("必须登录才能发布卡片");
         }
-        
+
         User user = userMapper.selectById(userId);
         if (user == null) {
             throw new IllegalArgumentException("用户不存在");
@@ -155,13 +213,57 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         card.setLikesCount(0);
         save(card);
 
+        List<Tag> attachedTags = attachTags(card.getId(), tagNames);
+
         // 发布卡片奖励 10 经验值
         userService.addExp(userId, 10);
 
         // 设置附加信息用于返回给前端
         card.setCommentCount(0); // 新卡片评论数为 0
         card.setIsOwner(true);
+        card.setTags(attachedTags);
         return card;
+    }
+
+    private List<Tag> attachTags(Long cardId, List<String> tagNames) {
+        if (cardId == null || tagNames == null || tagNames.isEmpty()) return Collections.emptyList();
+
+        List<Tag> result = new ArrayList<>();
+        for (String raw : tagNames) {
+            if (raw == null) continue;
+            String name = raw.trim();
+            if (name.isEmpty()) continue;
+
+            Tag tag = tagMapper.selectOne(new QueryWrapper<Tag>().eq("name", name));
+            if (tag == null) {
+                Tag toInsert = new Tag();
+                toInsert.setName(name);
+                toInsert.setUseCount(0);
+                try {
+                    tagMapper.insert(toInsert);
+                    tag = toInsert;
+                } catch (DuplicateKeyException ex) {
+                    tag = tagMapper.selectOne(new QueryWrapper<Tag>().eq("name", name));
+                }
+            }
+            if (tag == null || tag.getId() == null) continue;
+
+            CardTag rel = new CardTag();
+            rel.setCardId(cardId);
+            rel.setTagId(tag.getId());
+            try {
+                cardTagMapper.insert(rel);
+                tagMapper.update(null,
+                    new UpdateWrapper<Tag>()
+                        .eq("id", tag.getId())
+                        .setSql("use_count = use_count + 1")
+                );
+            } catch (DuplicateKeyException ignore) {
+            }
+
+            result.add(tag);
+        }
+        return result;
     }
 
     /**
@@ -178,11 +280,6 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
 
     /**
      * 随机获取卡片列表（用于首页"换一批"功能）
-     * 优先排除前端传入的近期浏览卡片，若剩余不足则自动补齐，确保返回数量固定
-     *
-     * @param limit 返回的卡片数量上限
-     * @param excludeIds 需要尽量排除的卡片ID列表
-     * @return 随机排序的卡片列表（已填充用户信息和评论数量）
      */
     public Map<String, Object> randomCards(int limit, List<Long> excludeIds, Long viewerId) {
         List<Long> normalizedExcludeIds = excludeIds == null ? Collections.emptyList() : excludeIds.stream()
@@ -207,14 +304,6 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         return result;
     }
 
-    /**
-     * 分页查询指定用户发布的卡片（用于"我的"标签页）
-     *
-     * @param userId 用户ID
-     * @param page   当前页码
-     * @param size   每页条数
-     * @return 分页结果
-     */
     public IPage<Card> listByUserId(Long userId, int page, int size, Long viewerId) {
         Page<Card> p = new Page<>(page, size);
         IPage<Card> cards = lambdaQuery()
@@ -226,34 +315,79 @@ public class CardService extends ServiceImpl<CardMapper, Card> {
         return cards;
     }
 
-    /**
-     * 删除卡片（仅允许卡片的发布者本人操作）
-     * 删除时会同时删除该卡片下的所有评论，保持数据一致性
-     *
-     * @param cardId 要删除的卡片ID
-     * @param userId 当前操作者的用户ID，用于权限校验
-     * @return true 删除成功，false 卡片不存在或无权限
-     */
+    public IPage<Card> listByTagId(Long tagId, int page, int size, Long viewerId) {
+        if (tagId == null) {
+            Page<Card> empty = new Page<>(page, size);
+            empty.setRecords(Collections.emptyList());
+            empty.setTotal(0);
+            return empty;
+        }
+
+        Page<CardTag> relPage = new Page<>(page, size);
+        IPage<CardTag> rels = cardTagMapper.selectPage(
+                relPage,
+                new QueryWrapper<CardTag>()
+                        .eq("tag_id", tagId)
+                        .orderByDesc("created_at")
+        );
+
+        List<CardTag> relRecords = rels.getRecords();
+        if (relRecords == null || relRecords.isEmpty()) {
+            Page<Card> empty = new Page<>(page, size);
+            empty.setRecords(Collections.emptyList());
+            empty.setTotal(rels.getTotal());
+            return empty;
+        }
+
+        List<Long> cardIds = relRecords.stream()
+                .map(CardTag::getCardId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+
+        List<Card> cards = listByIds(cardIds);
+        Map<Long, Integer> orderMap = new HashMap<>();
+        for (int i = 0; i < cardIds.size(); i++) {
+            orderMap.put(cardIds.get(i), i);
+        }
+        cards.sort((a, b) -> orderMap.getOrDefault(a.getId(), 0) - orderMap.getOrDefault(b.getId(), 0));
+
+        fillCardExtraInfo(cards);
+        applyViewerVisibility(cards, viewerId);
+
+        Page<Card> result = new Page<>(page, size);
+        result.setRecords(cards);
+        result.setTotal(rels.getTotal());
+        return result;
+    }
+
     @Transactional
     public boolean deleteCard(Long cardId, Long userId) {
-        // 查询卡片是否存在
         Card card = getById(cardId);
         if (card == null) {
             return false;
         }
 
-        // 权限校验：只有卡片的发布者才能删除自己的卡片
         if (!card.getUserId().equals(userId)) {
             return false;
         }
 
-        // 先删除该卡片下的所有评论，避免产生孤儿数据
+        List<CardTag> cardTags = cardTagMapper.selectList(
+                new QueryWrapper<CardTag>().eq("card_id", cardId).select("tag_id")
+        );
+
         commentMapper.delete(new QueryWrapper<Comment>().eq("card_id", cardId));
-
-        // 删除该卡片的所有追记录
         cardFollowMapper.delete(new QueryWrapper<CardFollow>().eq("card_id", cardId));
+        cardTagMapper.delete(new QueryWrapper<CardTag>().eq("card_id", cardId));
 
-        // 再删除卡片本身
+        for (CardTag ct : cardTags) {
+            tagMapper.update(null,
+                new UpdateWrapper<Tag>()
+                    .eq("id", ct.getTagId())
+                    .gt("use_count", 0)
+                    .setSql("use_count = use_count - 1")
+            );
+        }
+
         removeById(cardId);
         return true;
     }

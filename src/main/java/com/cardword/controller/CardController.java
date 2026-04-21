@@ -13,6 +13,7 @@ import javax.servlet.http.HttpServletRequest;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/cards")
@@ -26,6 +27,12 @@ public class CardController {
 
     @Autowired
     private SessionUtil sessionUtil;
+
+    private Long getCurrentUserId(HttpServletRequest request) {
+        Object attr = request.getAttribute("currentUserId");
+        if (attr instanceof Long) return (Long) attr;
+        return sessionUtil.getUserId(request);
+    }
 
     @GetMapping
     public IPage<Card> list(
@@ -55,10 +62,7 @@ public class CardController {
 
     @PostMapping
     public Object publish(@RequestBody Map<String, Object> body, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
 
         Object contentObj = body.get("content");
         Object nicknameObj = body.get("nickname");
@@ -79,7 +83,22 @@ public class CardController {
                 ? Integer.valueOf(body.get("isAnonymous").toString())
                 : 0;
 
-        return cardService.publish(content, nickname, userId, imageUrl, isAnonymous);
+        List<String> tagNames = Collections.emptyList();
+        Object tagsObj = body.get("tags");
+        if (tagsObj instanceof List) {
+            List<?> raw = (List<?>) tagsObj;
+            tagNames = raw.stream()
+                    .filter(v -> v != null)
+                    .map(Object::toString)
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .map(s -> s.length() > 12 ? s.substring(0, 12) : s)
+                    .distinct()
+                    .limit(5)
+                    .collect(Collectors.toList());
+        }
+
+        return cardService.publish(content, nickname, userId, imageUrl, isAnonymous, tagNames);
     }
 
     @PostMapping("/{id}/like")
@@ -94,19 +113,23 @@ public class CardController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
         return cardService.listByUserId(userId, page, size, userId);
+    }
+
+    @GetMapping("/by-tag")
+    public IPage<Card> byTag(
+            @RequestParam("tagId") Long tagId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "10") int size,
+            HttpServletRequest request) {
+        Long viewerId = sessionUtil.getUserId(request);
+        return cardService.listByTagId(tagId, page, size, viewerId);
     }
 
     @DeleteMapping("/{id}")
     public Map<String, Object> delete(@PathVariable Long id, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
         boolean success = cardService.deleteCard(id, userId);
         if (success) {
             return Collections.singletonMap("success", true);
@@ -117,10 +140,7 @@ public class CardController {
 
     @PostMapping("/upload")
     public Map<String, Object> uploadImage(@RequestParam("file") MultipartFile file, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
         try {
             String url = fileUploadService.uploadImage(file);
             return Collections.singletonMap("url", url);
@@ -131,20 +151,14 @@ public class CardController {
 
     @PostMapping("/{id}/follow")
     public Object follow(@PathVariable Long id, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
         boolean followed = cardService.toggleFollow(userId, id);
         return Collections.singletonMap("followed", followed);
     }
 
     @GetMapping("/followed-ids")
     public Object followedCardIds(HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.emptyList();
-        }
+        Long userId = getCurrentUserId(request);
         return cardService.listFollowedCardIds(userId);
     }
 
@@ -153,10 +167,7 @@ public class CardController {
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size,
             HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录");
-        }
+        Long userId = getCurrentUserId(request);
         return cardService.listFollowedCards(userId, page, size, userId);
     }
 }

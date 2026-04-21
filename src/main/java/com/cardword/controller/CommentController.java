@@ -7,7 +7,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -21,6 +20,12 @@ public class CommentController {
     @Autowired
     private SessionUtil sessionUtil;
 
+    private Long getCurrentUserId(HttpServletRequest request) {
+        Object attr = request.getAttribute("currentUserId");
+        if (attr instanceof Long) return (Long) attr;
+        return sessionUtil.getUserId(request);
+    }
+
     @GetMapping
     public List<Comment> list(@PathVariable Long cardId) {
         return commentService.listByCardId(cardId);
@@ -28,10 +33,7 @@ public class CommentController {
 
     @PostMapping
     public Object add(@PathVariable Long cardId, @RequestBody Map<String, Object> body, HttpServletRequest request) {
-        Long userId = sessionUtil.getUserId(request);
-        if (userId == null) {
-            return Collections.singletonMap("error", "请先登录后再评论");
-        }
+        Long userId = getCurrentUserId(request);
         String content = (String) body.get("content");
         Long parentId = body.get("parentId") != null ? Long.valueOf(body.get("parentId").toString()) : null;
         return commentService.addComment(cardId, content, userId, parentId);

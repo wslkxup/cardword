@@ -7,6 +7,7 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Data
 @TableName("card")
@@ -42,4 +43,10 @@ public class Card {
      */
     @TableField(exist = false)
     private Boolean isOwner;
+
+    /**
+     * 卡片标签（非数据库字段）
+     */
+    @TableField(exist = false)
+    private List<Tag> tags;
 }
