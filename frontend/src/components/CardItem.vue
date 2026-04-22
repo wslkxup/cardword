@@ -3,7 +3,6 @@
     class="card-item"
     :class="{ 'card-deleting': deleting }"
     ref="cardRef"
-    :style="{ animationDelay: `${index * 0.08}s` }"
     @mousemove="handleMouseMove"
     @mouseleave="handleMouseLeave"
     @click="onCardClick"
@@ -29,7 +28,7 @@
 
     <!-- 卡片图片 -->
     <div v-if="card.imageUrl" class="card-image" @click.stop>
-      <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
+      <img :src="card.imageUrl" alt="卡片图片" loading="lazy" @click="previewImage(card.imageUrl)" />
     </div>
 
     <!-- 标签 chips -->
@@ -125,7 +124,7 @@
 
             <!-- 详情图片 -->
             <div v-if="card.imageUrl" class="detail-image" @click.stop>
-              <img :src="card.imageUrl" alt="卡片图片" @click="previewImage(card.imageUrl)" />
+              <img :src="card.imageUrl" alt="卡片图片" loading="lazy" @click="previewImage(card.imageUrl)" />
             </div>
 
             <!-- 标签 chips -->
@@ -840,7 +839,6 @@ function downloadShareImage() {
   overflow: hidden;
   break-inside: avoid;
   margin-bottom: 20px;
-  animation: cardEnter 0.5s ease backwards;
   will-change: transform;
   cursor: pointer;
 }
@@ -851,17 +849,6 @@ function downloadShareImage() {
     0 20px 40px rgba(108, 92, 231, 0.18),
     0 8px 16px rgba(0, 0, 0, 0.06);
   border-color: rgba(108, 92, 231, 0.40);
-}
-
-@keyframes cardEnter {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .card-header {

@@ -79,7 +79,11 @@ async function submit() {
   try {
     const parentId = replyTo.value ? replyTo.value.id : null
     const res = await addComment(props.cardId, content.value.trim(), '', parentId)
-    comments.value.push(res)
+    const normalizedComment = {
+      ...res,
+      createdAt: res?.createdAt || res?.createTime || new Date().toISOString()
+    }
+    comments.value.push(normalizedComment)
     content.value = ''
     replyTo.value = null
     emit('commented')

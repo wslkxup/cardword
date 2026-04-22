@@ -192,46 +192,98 @@
 
     <main class="card-grid">
       <template v-if="loading">
-        <div v-for="i in 6" :key="'sk'+i" class="skeleton-card">
-          <div class="skeleton-header">
-            <div class="skeleton-avatar"></div>
-            <div class="skeleton-nickname"></div>
+        <div class="card-column skeleton-column">
+          <div v-for="i in 3" :key="`sk-left-${i}`" class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-nickname"></div>
+            </div>
+            <div class="skeleton-content">
+              <div class="skeleton-line" style="width: 100%"></div>
+              <div class="skeleton-line" style="width: 85%"></div>
+              <div class="skeleton-line" style="width: 60%"></div>
+            </div>
+            <div v-if="i !== 2" class="skeleton-image"></div>
+            <div class="skeleton-footer">
+              <div class="skeleton-time"></div>
+              <div class="skeleton-actions">
+                <div class="skeleton-action"></div>
+                <div class="skeleton-action"></div>
+                <div class="skeleton-action"></div>
+              </div>
+            </div>
           </div>
-          <div class="skeleton-content">
-            <div class="skeleton-line" style="width: 100%"></div>
-            <div class="skeleton-line" style="width: 85%"></div>
-            <div class="skeleton-line" style="width: 60%"></div>
-          </div>
-          <div v-if="i % 3 === 0" class="skeleton-image"></div>
-          <div class="skeleton-footer">
-            <div class="skeleton-time"></div>
-            <div class="skeleton-actions">
-              <div class="skeleton-action"></div>
-              <div class="skeleton-action"></div>
-              <div class="skeleton-action"></div>
+        </div>
+        <div class="card-column skeleton-column">
+          <div v-for="i in 3" :key="`sk-right-${i}`" class="skeleton-card">
+            <div class="skeleton-header">
+              <div class="skeleton-avatar"></div>
+              <div class="skeleton-nickname"></div>
+            </div>
+            <div class="skeleton-content">
+              <div class="skeleton-line" style="width: 92%"></div>
+              <div class="skeleton-line" style="width: 100%"></div>
+              <div class="skeleton-line" style="width: 68%"></div>
+            </div>
+            <div v-if="i !== 1" class="skeleton-image"></div>
+            <div class="skeleton-footer">
+              <div class="skeleton-time"></div>
+              <div class="skeleton-actions">
+                <div class="skeleton-action"></div>
+                <div class="skeleton-action"></div>
+                <div class="skeleton-action"></div>
+              </div>
             </div>
           </div>
         </div>
       </template>
 
       <template v-if="!loading">
-        <CardItem
-          v-for="(card, index) in cards"
-          :key="card.id"
-          :card="card"
-          :user-id="userId"
-          :index="index"
-          :initial-followed="followedSet.has(card.id)"
-          :allow-delete="activeTab === 'my' && mySubTab === 'cards'"
-          :remove-on-unfollow="activeTab === 'my' && mySubTab === 'followed'"
-          @liked="onLiked"
-          @deleted="onDeleted"
-          @followed="onFollowed"
-          @tag-click="onTagClick"
-        />
+        <TransitionGroup name="card-list" tag="div" class="card-column" appear>
+          <div
+            v-for="(card, index) in balancedCards.left"
+            :key="card.id"
+            class="card-list-item"
+            :style="getCardListItemStyle(index, 'left')"
+          >
+            <CardItem
+              :card="card"
+              :index="index"
+              :user-id="userId"
+              :initial-followed="followedSet.has(card.id)"
+              :allow-delete="activeTab === 'my' && mySubTab === 'cards'"
+              :remove-on-unfollow="activeTab === 'my' && mySubTab === 'followed'"
+              @liked="onLiked"
+              @deleted="onDeleted"
+              @followed="onFollowed"
+              @tag-click="onTagClick"
+            />
+          </div>
+        </TransitionGroup>
+        <TransitionGroup name="card-list" tag="div" class="card-column" appear>
+          <div
+            v-for="(card, index) in balancedCards.right"
+            :key="card.id"
+            class="card-list-item"
+            :style="getCardListItemStyle(index, 'right')"
+          >
+            <CardItem
+              :card="card"
+              :index="index"
+              :user-id="userId"
+              :initial-followed="followedSet.has(card.id)"
+              :allow-delete="activeTab === 'my' && mySubTab === 'cards'"
+              :remove-on-unfollow="activeTab === 'my' && mySubTab === 'followed'"
+              @liked="onLiked"
+              @deleted="onDeleted"
+              @followed="onFollowed"
+              @tag-click="onTagClick"
+            />
+          </div>
+        </TransitionGroup>
       </template>
 
-      <div v-if="!loading && cards.length === 0" class="empty-state">
+      <div v-if="!loading && cards.length === 0" class="empty-state" style="width: 100%;">
         <svg class="empty-illustration" width="140" height="140" viewBox="0 0 140 140" fill="none">
           <rect x="30" y="25" width="80" height="55" rx="10" fill="var(--color-accent-light)" stroke="var(--color-accent)" stroke-width="1.5" transform="rotate(-5 70 52)"/>
           <rect x="30" y="35" width="80" height="55" rx="10" fill="var(--color-bg-card)" stroke="var(--color-border-strong)" stroke-width="1.5" transform="rotate(3 70 62)"/>
@@ -393,12 +445,50 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, provide } from 'vue'
+import { ref, onMounted, onUnmounted, provide, computed } from 'vue'
 import { getRandomCards, getMyCards, publishCard, getLocalUserId, setLocalUserId, getLocalToken, setLocalToken, login, register, logout as apiLogout, submitFeedback, followCard, getFollowedCards, getFollowedCardIds, getAnnouncements, getLatestAnnouncement, changePassword, getUserInfo, searchTags, getCardsByTag, getHotTags, loadUploadConfig, setOnSessionExpired } from './api.js'
 import CardItem from './components/CardItem.vue'
 import CardForm from './components/CardForm.vue'
 
 const cards = ref([])
+const balancedCards = computed(() => {
+  if (!cards.value.length) return { left: [], right: [] }
+  const left = []
+  const right = []
+  let leftHeight = 0
+  let rightHeight = 0
+  cards.value.forEach(card => {
+    const cardHeight = estimateCardHeight(card)
+    if (leftHeight <= rightHeight) {
+      left.push(card)
+      leftHeight += cardHeight
+    } else {
+      right.push(card)
+      rightHeight += cardHeight
+    }
+  })
+  return { left, right }
+})
+
+function estimateCardHeight(card) {
+  let height = 120
+  if (card.content) height += Math.min(card.content.length / 15, 6) * 24
+  if (card.imageUrl) height += 200
+  if (card.tags && card.tags.length) height += 40
+  return height
+}
+
+function getCardListItemStyle(index, column = 'left') {
+  const step = 0.22
+  const offset = column === 'right' ? 0.11 : 0
+  const delay = Math.min(index * step + offset, 1.7)
+  const duration = 0.9 + Math.min(index * 0.08, 0.4)
+
+  return {
+    '--card-stagger-delay': `${delay}s`,
+    '--card-stagger-duration': `${duration}s`
+  }
+}
 const showForm = ref(false)
 const showLogin = ref(false)
 const showRegister = ref(false)
@@ -469,6 +559,7 @@ async function selectTag(tag) {
   clearTagSuggestions()
 
   loading.value = true
+  const startedAt = Date.now()
   try {
     const res = await getCardsByTag(tag.id, 1, 10)
     cards.value = res?.records || []
@@ -480,7 +571,12 @@ async function selectTag(tag) {
       } catch {}
     }
   } finally {
-    loading.value = false
+    const elapsed = Date.now() - startedAt
+    const minLoadTime = 180
+    const remain = Math.max(0, minLoadTime - elapsed)
+    setTimeout(() => {
+      loading.value = false
+    }, remain)
   }
 }
 
@@ -493,7 +589,10 @@ function clearTagFilter() {
 
 function onTagClick(tag) {
   activeTab.value = 'all'
-  selectTag(tag)
+  activeTag.value = tag
+  tagQuery.value = tag?.name ? `#${tag.name}` : ''
+  clearTagSuggestions()
+  shuffle()
 }
 
 function hashString(str) {
@@ -680,6 +779,7 @@ function syncRecentCardIds(cardsList) {
 
 async function loadCards() {
   loading.value = true
+  const startedAt = Date.now()
   try {
     const excludeIds = recentCardIds.value.slice(0, 30)
     const res = await getRandomCards(10, excludeIds)
@@ -700,7 +800,12 @@ async function loadCards() {
       }
     }
   } finally {
-    loading.value = false
+    const elapsed = Date.now() - startedAt
+    const minLoadTime = 180
+    const remain = Math.max(0, minLoadTime - elapsed)
+    setTimeout(() => {
+      loading.value = false
+    }, remain)
   }
 }
 
@@ -765,7 +870,7 @@ function shuffle() {
   Promise.resolve(p)
     .finally(() => {
       const elapsed = Date.now() - startedAt
-      const minDuration = 700 // 确保动画至少展示一小段时间
+      const minDuration = 220
       const remain = Math.max(0, minDuration - elapsed)
 
       setTimeout(() => {
@@ -812,7 +917,7 @@ async function onPublished(card) {
       await loadMyCards()
     }
   } else {
-    cards.value.unshift(card)
+    cards.value = [card, ...cards.value]
   }
   showForm.value = false
   launchConfetti()
@@ -1416,14 +1521,64 @@ body {
 
 /* ========== 瀑布流 ========== */
 .card-grid {
-  column-count: 2;
-  column-gap: 20px;
-  column-fill: balance;
+  display: flex;
+  gap: 20px;
   position: relative;
   z-index: 1;
 }
 
-.card-grid > * {
+.card-column {
+  flex: 1;
+  min-width: 0;
+}
+
+.skeleton-column {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-list-item {
+  transition-delay: var(--card-stagger-delay, 0s);
+}
+
+.card-list-enter-active,
+.card-list-appear-active {
+  transition:
+    opacity var(--card-stagger-duration, 1s) cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--card-stagger-duration, 1s) cubic-bezier(0.2, 0.9, 0.2, 1);
+  transition-delay: var(--card-stagger-delay, 0s);
+}
+
+.card-list-leave-active {
+  transition:
+    opacity 0.38s ease,
+    transform 0.38s ease;
+}
+
+.card-list-move {
+  transition: transform 0.8s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.card-list-enter-from,
+.card-list-appear-from {
+  opacity: 0;
+  transform: translate3d(0, 44px, 0) scale(0.95);
+}
+
+.card-list-leave-to {
+  opacity: 0;
+  transform: translate3d(0, -16px, 0) scale(0.98);
+}
+
+.card-list-enter-to,
+.card-list-appear-to,
+.card-list-leave-from {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+}
+
+.card-list-leave-active {
+  position: absolute;
   width: 100%;
 }
 
@@ -1534,7 +1689,7 @@ body {
 
 
 /* ========== 空状态 ========== */
-.empty-state { column-span: all; text-align: center; padding: 60px 20px; color: var(--color-text-muted); }
+.empty-state { width: 100%; text-align: center; padding: 60px 20px; color: var(--color-text-muted); }
 .empty-illustration { margin-bottom: 20px; opacity: 0.7; }
 .empty-state p { font-size: 15px; }
 
@@ -2176,7 +2331,7 @@ body {
 /* ========== 响应式 ========== */
 @media (max-width: 768px) {
   .app { padding-right: 16px; padding-bottom: 80px; }
-  .card-grid { column-count: 1; }
+  .card-grid { flex-direction: column; }
   .side-nav { position: fixed; right: auto; left: 50%; top: auto; bottom: 16px; transform: translateX(-50%); flex-direction: row; background: var(--color-nav-bg); padding: 8px 16px; border-radius: 28px; box-shadow: 0 4px 20px rgba(0,0,0,0.1), 0 8px 32px rgba(0,0,0,0.05); }
   .nav-btn { width: 42px; height: 42px; box-shadow: none; }
   .nav-btn:hover, .nav-btn.active { box-shadow: none; }
